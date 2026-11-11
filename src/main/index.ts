@@ -4,7 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
 function createWindow(): void {
-  // Create the browser window.
+  // 앱 화면을 표시할 창을 생성한다.
   const mainWindow = new BrowserWindow({
     width: 900,
     height: 670,
@@ -24,8 +24,8 @@ function createWindow(): void {
     mainWindow.show()
   })
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
+  // 개발 중에는 변경 사항이 바로 반영되는 개발 서버를 불러온다.
+  // 배포 환경에서는 앱에 포함된 HTML 파일을 불러온다.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -33,16 +33,15 @@ function createWindow(): void {
   }
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
+// Electron 초기화가 끝나고 창을 생성할 준비가 되면 실행한다.
+// 일부 API는 이 시점 이후에만 사용할 수 있다.
 app.whenReady().then(() => {
-  // Set app user model id for windows
+  // Windows에서 앱을 식별할 ID를 설정한다.
   electronApp.setAppUserModelId('com.heozip.hanzanhae')
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
+  // 개발 중에는 F12로 개발자 도구를 열고 닫을 수 있도록 한다.
+  // 배포 환경에서는 Command 또는 Control + R 새로고침을 무시한다.
+  // 참고: https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
@@ -50,20 +49,17 @@ app.whenReady().then(() => {
   createWindow()
 
   app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
+    // macOS에서 열린 창이 없을 때 Dock 아이콘을 누르면 창을 다시 연다.
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
+// macOS를 제외한 운영체제에서는 모든 창이 닫히면 앱을 종료한다.
+// macOS에서는 사용자가 Cmd + Q로 종료할 때까지 앱을 유지한다.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.
+// 앱에 필요한 메인 프로세스 코드를 이곳에 추가하거나 별도 파일로 분리할 수 있다.
