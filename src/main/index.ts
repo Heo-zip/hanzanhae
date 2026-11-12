@@ -6,8 +6,12 @@ import icon from '../../resources/icon.png?asset'
 function createWindow(): void {
   // 앱 화면을 표시할 창을 생성한다.
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    // 기본 1280×800(16:10). 최소 1024×700은 13인치 Mac(1440×900)에서 메뉴 막대·Dock을 빼고도 들어가는 크기다.
+    // 1180px 미만에서는 대시보드가 한 열로 바뀌어 세로로 스크롤된다.
+    width: 1280,
+    height: 800,
+    minWidth: 1024,
+    minHeight: 700,
     show: false,
     autoHideMenuBar: true,
     title: '한잔해',
