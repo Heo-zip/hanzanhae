@@ -15,6 +15,9 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     title: '한잔해',
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 24, y: 20 } }
+      : {}),
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

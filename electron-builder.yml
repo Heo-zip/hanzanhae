@@ -2,6 +2,9 @@ appId: com.heozip.hanzanhae
 productName: 한잔해
 directories:
   buildResources: build
+extraResources:
+  - from: src/renderer/src/assets/fonts/OFL.txt
+    to: licenses/Paperlogy-OFL.txt
 files:
   - '!**/.vscode/*'
   - '!src/*'
