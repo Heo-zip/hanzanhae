@@ -2,7 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { getGardenWindow, showGardenWindow } from './windows/gardenWindow'
+import { getGardenWindow, isAppQuitting, showGardenWindow } from './windows/gardenWindow'
 import { initializeGardenControls } from './gardenControls'
 import { initializeStorageIpc } from './storage/ipc'
 
@@ -40,6 +40,15 @@ function createWindow(): void {
   })
 
   dashboardWindow = mainWindow
+  // 창을 닫으면 숨기고 메뉴 막대·Dock 아이콘으로 다시 연다. 다시 열 때 화면을 새로 불러오지 않는다.
+  mainWindow.on('close', (event) => {
+    if (isAppQuitting()) return
+    event.preventDefault()
+    // macOS 전체 화면에서 바로 숨기면 빈 검은 화면이 남으므로 전체 화면을 끝낸 뒤 숨긴다.
+    if (!mainWindow.isFullScreen()) return mainWindow.hide()
+    mainWindow.once('leave-full-screen', () => mainWindow.hide())
+    mainWindow.setFullScreen(false)
+  })
   mainWindow.on('closed', () => {
     if (dashboardWindow === mainWindow) dashboardWindow = null
   })
