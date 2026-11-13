@@ -3,8 +3,16 @@
 ## 프로젝트 이해
 
 - 한잔해는 물을 마시는 습관을 돕는 macOS 정원 앱이다. MVP는 로그인과 별도 서버 없이 동작하도록 설계한다.
-- 현재는 Electron + React + TypeScript 개발 환경과 대시보드 화면 미리보기가 있다. 물 기록, IPC, SQLite와 메뉴 막대는 아직 구현되지 않았다.
+- Electron + React + TypeScript 환경에서 최초 목표·한 잔 용량 설정, 목표 중단·재생성과 SQLite 복원을 구현했다. 정원 창의 클릭 통과, 우클릭 숨기기, 전역 단축키와 메뉴 막대가 있으며 물 기록 API는 아직 구현되지 않았다.
 - 작업 전 관련 문서를 확인하고, 구현된 내용과 설계·미정 항목을 구분한다.
+
+## 작업과 문서 기록
+
+- 작업 전 [현재 상태](docs/CONTEXT.md), [다음 작업](docs/NEXT_TASK.md), [결정 기록](docs/DECISION_RECORD.md)과 해당 명세를 확인한다. 파일 목록과 우선순위는 [문서 안내](docs/README.md)를 따른다.
+- 새 기능은 [PLAN 템플릿](docs/templates/FEATURE_PLAN_TEMPLATE.md)으로 목적·범위·사용자 흐름·데이터·검증 조건을 먼저 정리한다. 이미 승인된 사용자 요청을 따르고, 문서 작업이나 단순 수정에 PLAN을 강제하지 않는다.
+- 기능 개발 중 실제 발생한 오류는 오류마다 `docs/features/기능명-오류명-ERROR.md`로 기록한다. 오류가 없으면 파일을 만들지 않는다.
+- 새 기능의 구현과 검증이 끝나면 `docs/features/기능명-REPORT.md`에 실제 테스트 결과·미확인 사항·배운 개념을 남긴다. 단순 버그 수정에 REPORT를 강제하지 않는다.
+- 기능명과 오류명은 소문자 kebab-case다. 작업 후 CONTEXT·NEXT_TASK를 갱신하고, 결정이 바뀌면 DECISION_RECORD와 제품·IPC·DB 명세를 함께 갱신한다. 상세는 [문서 작성 규칙](docs/DOCUMENTATION_RULES.md)과 [작업 흐름](docs/WORKFLOW.md)을 따른다.
 
 ## 필수 원칙
 
@@ -32,6 +40,9 @@
 
 ## 문서 안내
 
+- [문서 목록과 읽는 순서](docs/README.md)
+- [현재 상태](docs/CONTEXT.md) · [다음 작업](docs/NEXT_TASK.md) · [결정 기록](docs/DECISION_RECORD.md)
+- [기능별 PLAN·ERROR·REPORT](docs/features/README.md)
 - [제품 개요와 범위](docs/product.md)
 - [기능과 사용자 흐름](docs/features.md)
 - [아키텍처와 데이터 흐름](docs/architecture.md)
