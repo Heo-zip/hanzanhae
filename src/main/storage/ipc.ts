@@ -154,7 +154,16 @@ export function initializeStorageIpc(
       return { ok: false, code: 'STORAGE_ERROR' }
     }
   })
+  // 강제 종료 시에도 마지막 1분 이내의 실행 시간만 종료 중 속도로 계산한다.
+  const plantTimer = setInterval(() => {
+    try {
+      database?.checkpointPlant()
+    } catch {
+      // 다음 조회나 저장에서 오류를 안내한다.
+    }
+  }, 60_000)
   app.once('will-quit', () => {
+    clearInterval(plantTimer)
     database?.close()
     database = undefined
   })

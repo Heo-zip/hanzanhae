@@ -161,6 +161,10 @@
   justify-content: center;
   padding-bottom: 170px;
 }
+/* 상단 진행 표시 높이를 보정해 첫 화면의 내용 전체를 창 중앙에 놓는다. */
+.ob-body-welcome {
+  padding-bottom: 48px;
+}
 .ob-step {
   display: none;
   flex-direction: column;

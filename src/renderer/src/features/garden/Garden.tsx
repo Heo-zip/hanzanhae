@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import type { AppState } from '../../../../shared/appState'
 import { useRecordCup } from '../water/useRecordCup'
 import { useCancelWater } from '../water/useCancelWater'
-import stage1 from '../../assets/stage1.webp'
+import { plantImage, plantIndex, plants } from '../plant/plantVisual'
 import wateringCan from '../../assets/icons/watering-can.webp'
 import './garden.css'
 
@@ -16,6 +16,20 @@ function Garden({
   const [isOpen, setIsOpen] = useState(false)
   const [pouring, setPouring] = useState(false)
   const [showUndo, setShowUndo] = useState(false)
+  const [watered, setWatered] = useState(false)
+  const plant = plants[plantIndex(state.plantStage)]
+  const source = plantImage(state.plantStage, state.plantVitality, watered)
+  const rim =
+    watered && state.plantStage === 'young'
+      ? 436
+      : watered && state.plantStage === 'flower'
+        ? 436
+        : state.plantVitality < 45 && state.plantStage === 'leafy'
+          ? 412
+          : plant.rim
+  const faded =
+    state.plantVitality < 100 && (state.plantStage === 'seedling' || state.plantStage === 'flower')
+  const dry = (100 - state.plantVitality) / 100
   const { record, busy, error } = useRecordCup(state, refresh)
   const { cancel, retry, busy: cancelBusy, error: cancelError, retryable } = useCancelWater(refresh)
   const latest =
@@ -39,9 +53,13 @@ function Garden({
   useEffect(() => {
     let timer: number | undefined
     let undoTimer: number | undefined
+    let wateredTimer: number | undefined
     const unsubscribe = window.hanzanhae.onWaterRecorded(() => {
       window.clearTimeout(timer)
       window.clearTimeout(undoTimer)
+      window.clearTimeout(wateredTimer)
+      setWatered(true)
+      wateredTimer = window.setTimeout(() => setWatered(false), 2600)
       setShowUndo(false)
       setIsOpen(true)
       setPouring(true)
@@ -58,6 +76,7 @@ function Garden({
     return () => {
       window.clearTimeout(timer)
       window.clearTimeout(undoTimer)
+      window.clearTimeout(wateredTimer)
       unsubscribe()
     }
   }, [])
@@ -104,11 +123,27 @@ function Garden({
             if (!pouring) setIsOpen((open) => !open)
           }}
         >
-          <span className="garden-layer" aria-hidden="true">
+          <span
+            className="garden-layer"
+            key={state.plantStage}
+            aria-hidden="true"
+            style={{ '--rim': `${rim / 8}%` } as CSSProperties}
+          >
             <span className="garden-box">
-              <img className="garden-base" src={stage1} alt="" />
+              <img className="garden-base" src={source} alt="" />
               <span className="garden-top-wrap">
-                <img className="garden-top" src={stage1} alt="" />
+                <img
+                  className="garden-top"
+                  src={source}
+                  alt=""
+                  style={
+                    faded
+                      ? {
+                          filter: `saturate(${1 - dry * 0.65}) sepia(${dry * 0.4}) brightness(${1 - dry * 0.06})`
+                        }
+                      : undefined
+                  }
+                />
               </span>
             </span>
           </span>

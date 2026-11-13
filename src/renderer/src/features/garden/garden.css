@@ -259,3 +259,27 @@ html.garden-window #root {
     animation: none;
   }
 }
+
+/* 성장 단계가 바뀌면 새로운 화분이 가볍게 나타난다. */
+.garden-layer {
+  animation: garden-grow 0.75s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes garden-grow {
+  0% {
+    transform: scale(0.86);
+    opacity: 0;
+  }
+  65% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .garden-layer {
+    animation: none;
+  }
+}

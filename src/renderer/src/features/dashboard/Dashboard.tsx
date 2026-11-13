@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { AppState, SettingsInput } from '../../../../shared/appState'
 import { useRecordCup } from '../water/useRecordCup'
 import { useCancelWater } from '../water/useCancelWater'
@@ -13,22 +13,11 @@ import statCups from '../../assets/icons/stat-cups.webp'
 import statStreak from '../../assets/icons/stat-streak.webp'
 import statVitality from '../../assets/icons/stat-vit.webp'
 import drop from '../../assets/icons/drop.webp'
-import stage1 from '../../assets/stage1.webp'
-import stage2 from '../../assets/stage2.webp'
-import stage3 from '../../assets/stage3.webp'
-import stage4 from '../../assets/stage4.webp'
+import { plantImage, plantIndex, plants as stages } from '../plant/plantVisual'
 import './dashboard.css'
 
 // 대시보드에서 선택할 수 있는 화면을 세 가지로 제한한다.
 type View = 'today' | 'history' | 'settings'
-
-// 성장 여정에 보여줄 이미지 순서다. 단계가 바뀌는 성장량은 아직 정하지 않았다.
-const stages = [
-  { name: '새싹', image: stage1 },
-  { name: '어린 잎', image: stage2 },
-  { name: '무성한 잎', image: stage3 },
-  { name: '꽃', image: stage4 }
-]
 
 const navItems: { view: View; label: string; icon: string }[] = [
   { view: 'today', label: '오늘', icon: navToday },
@@ -113,6 +102,21 @@ function Today({
     errorCode
   } = useCancelWater(refresh)
   const [cancelNotice, setCancelNotice] = useState('')
+  const [watered, setWatered] = useState(false)
+  const [waterPulse, setWaterPulse] = useState(0)
+  useEffect(() => {
+    let timer: number | undefined
+    const unsubscribe = window.hanzanhae.onWaterRecorded(() => {
+      window.clearTimeout(timer)
+      setWatered(true)
+      setWaterPulse((value) => value + 1)
+      timer = window.setTimeout(() => setWatered(false), 2600)
+    })
+    return () => {
+      window.clearTimeout(timer)
+      unsubscribe()
+    }
+  }, [])
   const [clearSnapshot, setClearSnapshot] = useState<ClearTodaySnapshot | null>(null)
   const [modalAttempted, setModalAttempted] = useState(false)
   const currentRecords = state.todayRecords.filter((item) => item.goalId === state.goalId)
@@ -170,6 +174,8 @@ function Today({
   const amount = todayMl
   const today = getDayLabels()[6].full
   const percent = Math.min(100, Math.round((amount / preview.goal) * 100))
+  const stageIndex = plantIndex(state.plantStage)
+  const stage = stages[stageIndex]
 
   return (
     <section className="view on" aria-label="오늘">
@@ -179,9 +185,30 @@ function Today({
             <div className="msg">
               <div className="hi">{today}</div>
               <h1>
-                오늘 <em>{preview.today.length}잔</em> 마셨어요
-                <br />
-                새싹이 기다리고 있어요
+                {amount >= preview.goal ? (
+                  <>
+                    오늘 목표 달성!
+                    <br />
+                    <em>{stage.name}</em>이 활짝 웃어요
+                  </>
+                ) : state.plantVitality < 45 ? (
+                  <>
+                    화분이 목말라 해요
+                    <br />물 <em>한 잔</em> 어때요?
+                  </>
+                ) : preview.today.length === 0 ? (
+                  <>
+                    화분이 오늘의
+                    <br />
+                    <em>첫 잔</em>을 기다려요
+                  </>
+                ) : (
+                  <>
+                    오늘 <em>{preview.today.length}잔</em> 마셨어요
+                    <br />
+                    화분이 생생해요
+                  </>
+                )}
               </h1>
               <p>
                 {amount >= preview.goal
@@ -190,16 +217,25 @@ function Today({
               </p>
               <div className="grow">
                 <div className="steps" aria-hidden="true">
-                  <i className="on" />
-                  <i />
-                  <i />
-                  <i />
+                  {stages.map((item, index) => (
+                    <i key={item.id} className={index <= stageIndex ? 'on' : undefined} />
+                  ))}
                 </div>
-                <span>새싹 · 성장을 준비하고 있어요</span>
+                <span>
+                  {stage.name} ·{' '}
+                  {stageIndex === stages.length - 1
+                    ? '활짝 피었어요'
+                    : `${stages[stageIndex + 1].name}으로 자라고 있어요`}
+                </span>
               </div>
             </div>
             <div className="pot">
-              <img src={stage1} alt="새싹 화분" />
+              <img
+                key={waterPulse}
+                className={watered ? 'wobble' : undefined}
+                src={plantImage(state.plantStage, state.plantVitality, watered)}
+                alt={`${stage.name} 화분`}
+              />
             </div>
           </div>
           <div className="card today">
@@ -256,7 +292,7 @@ function Today({
             />
             <Metric icon={statCups} label="오늘 마신 잔" value={preview.today.length} unit="잔" />
             <Metric icon={statStreak} label="연속 달성" value="—" unit="" />
-            <Metric icon={statVitality} label="화분 생기" value="—" unit="" />
+            <Metric icon={statVitality} label="화분 생기" value={state.plantVitality} unit="%" />
           </div>
         </div>
         <div className="col side-col">
@@ -328,6 +364,7 @@ function Today({
       </div>
       {clearSnapshot && (
         <ClearTodayDialog
+          plantStage={state.plantStage}
           snapshot={clearSnapshot}
           currentTodayMl={state.todayMl}
           busy={cancelBusy}
@@ -346,7 +383,8 @@ function Today({
 }
 
 // 저장된 기록이 없는 동안 성장 여정과 통계의 준비 상태를 표시한다.
-function History(): React.JSX.Element {
+function History({ state }: { state: ConfiguredState }): React.JSX.Element {
+  const current = plantIndex(state.plantStage)
   return (
     <section className="view on" aria-label="기록">
       <div className="head">
@@ -360,10 +398,13 @@ function History(): React.JSX.Element {
           </h2>
           <div className="stages">
             {stages.map((stage, index) => (
-              <div key={stage.name} className={`stage ${index === 0 ? 'done now' : 'todo'}`}>
+              <div
+                key={stage.name}
+                className={`stage ${index < current ? 'done' : index === current ? 'done now' : 'todo'}`}
+              >
                 <img src={stage.image} alt={`${stage.name} 화분`} />
                 <b>{stage.name}</b>
-                <span>{index === 0 ? '시작' : '성장 단계'}</span>
+                <span>{index === 0 ? '시작' : index <= current ? '도달했어요' : '성장 단계'}</span>
               </div>
             ))}
           </div>
@@ -620,14 +661,14 @@ function Settings({
             <button className="place on" disabled>
               <span className="mini">
                 <i className="dock" />
-                <img src={stage3} alt="" className="on-dock" />
+                <img src={stages[2].image} alt="" className="on-dock" />
               </span>
               <b>Dock 위</b>
             </button>
             <button className="place" disabled>
               <span className="mini">
                 <i className="dock" />
-                <img src={stage3} alt="" className="on-floor" />
+                <img src={stages[2].image} alt="" className="on-floor" />
               </span>
               <b>화면 바닥</b>
             </button>
@@ -715,8 +756,7 @@ function Dashboard({
         <div className="foot">
           기록은 이 Mac에만 저장돼요.
           <br />
-          로그인 없이 사용 중
-          <div className="preview-note">식물 성장과 통계 기능을 준비하고 있어요.</div>
+          로그인 없이 사용 중<div className="preview-note">통계 기능을 준비하고 있어요.</div>
         </div>
       </aside>
       <main>
@@ -734,7 +774,7 @@ function Dashboard({
               </button>
             </section>
           ))}
-        {view === 'history' && <History />}
+        {view === 'history' && <History state={state} />}
         {view === 'settings' && <Settings state={state} refresh={refresh} />}
       </main>
     </div>
