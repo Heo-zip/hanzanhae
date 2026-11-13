@@ -19,6 +19,6 @@
 
 ## 한계와 후속
 
-- 실제 물 기록·성장·취소는 아직 없다. 현재 오늘 총량은 조정만 포함하며, 물 기록 기능을 구현할 때 유효 기록 합을 더해야 한다.
+- 이 보고서 작성 당시에는 물 기록·성장·취소가 없었다. 이후 [물 기록 결과](water-record-REPORT.md)에서 실제 물 기록과 조정 합산을 구현했으며 성장·취소는 후속이다.
 - Dock 위치 옵션, 위젯 설정과 자동 실행 설정은 아직 비활성화 상태다. 패키지·DMG 실행과 배포는 확인하지 않았다.
 - [CSS 오류](setup-settings-design-css-ERROR.md)와 [테스트 시간 초과](setup-settings-design-test-timing-ERROR.md), [테스트 반환값 오류](setup-settings-design-test-clone-ERROR.md)는 해결했다.

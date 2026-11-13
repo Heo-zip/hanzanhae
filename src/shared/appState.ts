@@ -6,10 +6,23 @@ export type AppState =
       goalMl: number
       cupMl: number
       todayMl: number
+      todayRecords: WaterRecord[]
       day: string
       plantStage: 'seedling'
     }
-  | { status: 'goal-stopped'; cupMl: number; todayMl: number; day: string }
+  | {
+      status: 'goal-stopped'
+      cupMl: number
+      todayMl: number
+      todayRecords: WaterRecord[]
+      day: string
+    }
+
+export type WaterRecord = { id: number; amountMl: number; recordedAt: string }
+export type RecordCupInput = { requestId: string; expectedGoalId: number; day: string }
+export type RecordCupResult =
+  | { ok: true; state: AppState; created: boolean }
+  | { ok: false; code: 'VALIDATION_ERROR' | 'STALE_STATE' | 'STORAGE_ERROR' }
 
 export type AppResult =
   | { ok: true; state: AppState }

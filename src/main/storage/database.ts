@@ -1,28 +1,37 @@
 import { DatabaseSync } from 'node:sqlite'
-import type { AppState, SetupInput, SettingsInput } from '../../shared/appState'
+import type {
+  AppState,
+  SetupInput,
+  SettingsInput,
+  RecordCupInput,
+  WaterRecord
+} from '../../shared/appState'
 
 export class AlreadyConfiguredError extends Error {}
 export class InvalidSetupError extends Error {}
 export class StaleStateError extends Error {}
 
-function today(): string {
+function today(date: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Seoul',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
-  }).format(new Date())
+  }).format(date)
 }
 
 export class AppDatabase {
   private readonly db: DatabaseSync
 
-  constructor(path: string) {
+  constructor(
+    path: string,
+    private readonly now: () => Date = () => new Date()
+  ) {
     this.db = new DatabaseSync(path)
     try {
       this.db.exec('PRAGMA foreign_keys = ON')
       const version = Number(this.db.prepare('PRAGMA user_version').get()?.user_version)
-      if (version > 2) throw new Error('지원하지 않는 데이터베이스 버전')
+      if (version > 3) throw new Error('지원하지 않는 데이터베이스 버전')
       if (version === 0) {
         this.db.exec(`
           BEGIN IMMEDIATE;
@@ -41,6 +50,15 @@ export class AppDatabase {
           CREATE TABLE daily_adjustments (id INTEGER PRIMARY KEY, goal_id INTEGER NOT NULL REFERENCES goal_sessions(id), day TEXT NOT NULL, amount_ml INTEGER NOT NULL, created_at TEXT NOT NULL);
           CREATE TABLE settings_receipts (request_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
           PRAGMA user_version = 2;
+          COMMIT;
+        `)
+      }
+      if (version < 3) {
+        this.db.exec(`
+          BEGIN IMMEDIATE;
+          CREATE TABLE water_records (id INTEGER PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, goal_id INTEGER NOT NULL REFERENCES goal_sessions(id), amount_ml INTEGER NOT NULL CHECK(amount_ml > 0), recorded_at TEXT NOT NULL, day TEXT NOT NULL, cancelled_at TEXT);
+          CREATE INDEX water_records_by_day ON water_records(day, cancelled_at);
+          PRAGMA user_version = 3;
           COMMIT;
         `)
       }
@@ -67,7 +85,15 @@ export class AppDatabase {
       const adjustments = Number(
         this.db.prepare('SELECT COUNT(*) AS n FROM daily_adjustments').get()?.n
       )
-      if (goalCount !== 0 || plant || receipts !== 0 || changes !== 0 || adjustments !== 0)
+      const records = Number(this.db.prepare('SELECT COUNT(*) AS n FROM water_records').get()?.n)
+      if (
+        goalCount !== 0 ||
+        plant ||
+        receipts !== 0 ||
+        changes !== 0 ||
+        adjustments !== 0 ||
+        records !== 0
+      )
         throw new Error('불완전한 설정 데이터')
       return { status: 'setup-required' }
     }
@@ -81,14 +107,25 @@ export class AppDatabase {
     ) {
       throw new Error('유효하지 않은 설정 데이터')
     }
-    const day = today()
-    const todayMl = Number(
+    const day = today(this.now())
+    const adjustment = Number(
       this.db
         .prepare('SELECT COALESCE(SUM(amount_ml), 0) AS total FROM daily_adjustments WHERE day = ?')
         .get(day)?.total
     )
+    const todayRecords: WaterRecord[] = this.db
+      .prepare(
+        'SELECT id, amount_ml, recorded_at FROM water_records WHERE day = ? AND cancelled_at IS NULL ORDER BY recorded_at DESC, id DESC'
+      )
+      .all(day)
+      .map((record) => ({
+        id: Number(record.id),
+        amountMl: Number(record.amount_ml),
+        recordedAt: String(record.recorded_at)
+      }))
+    const todayMl = adjustment + todayRecords.reduce((total, record) => total + record.amountMl, 0)
     if (!Number.isSafeInteger(todayMl) || todayMl < 0) throw new Error('유효하지 않은 오늘 총량')
-    if (!goal) return { status: 'goal-stopped', cupMl, todayMl, day }
+    if (!goal) return { status: 'goal-stopped', cupMl, todayMl, todayRecords, day }
     const goalMl = Number(goal.target_ml)
     if (!Number.isSafeInteger(goalMl) || goalMl <= 0) throw new Error('유효하지 않은 목표')
     return {
@@ -97,6 +134,7 @@ export class AppDatabase {
       goalMl,
       cupMl,
       todayMl,
+      todayRecords,
       day,
       plantStage: 'seedling'
     }
@@ -127,7 +165,7 @@ export class AppDatabase {
         this.db.prepare('INSERT INTO app_settings VALUES (1, ?, 1)').run(cupMl)
         this.db
           .prepare('INSERT INTO goal_sessions (target_ml, started_at) VALUES (?, ?)')
-          .run(goalMl, new Date().toISOString())
+          .run(goalMl, this.now().toISOString())
         this.db.prepare("INSERT INTO plant_state VALUES (1, 'seedling')").run()
         this.db
           .prepare('INSERT INTO mutation_receipts VALUES (?, ?, ?)')
@@ -144,12 +182,61 @@ export class AppDatabase {
             goalMl,
             cupMl,
             todayMl: 0,
-            day: today(),
+            todayRecords: [],
+            day: today(this.now()),
             plantStage: 'seedling'
           }
         : currentState
       this.db.exec('COMMIT')
       return state
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
+  recordCup(input: RecordCupInput): { state: AppState; created: boolean } {
+    if (
+      !input ||
+      typeof input.requestId !== 'string' ||
+      input.requestId.length < 1 ||
+      input.requestId.length > 128 ||
+      !Number.isSafeInteger(input.expectedGoalId) ||
+      input.expectedGoalId <= 0 ||
+      typeof input.day !== 'string'
+    )
+      throw new InvalidSetupError()
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      const previous = this.db
+        .prepare('SELECT goal_id, day FROM water_records WHERE request_id = ?')
+        .get(input.requestId)
+      let created = false
+      if (previous) {
+        if (Number(previous.goal_id) !== input.expectedGoalId || previous.day !== input.day)
+          throw new InvalidSetupError()
+      } else {
+        const state = this.readState()
+        const now = this.now()
+        const actualDay = today(now)
+        if (
+          state.status !== 'ready' ||
+          state.goalId !== input.expectedGoalId ||
+          state.day !== input.day ||
+          actualDay !== input.day
+        )
+          throw new StaleStateError()
+        if (!Number.isSafeInteger(state.todayMl + state.cupMl)) throw new InvalidSetupError()
+        this.db
+          .prepare(
+            'INSERT INTO water_records (request_id, goal_id, amount_ml, recorded_at, day) VALUES (?, ?, ?, ?, ?)'
+          )
+          .run(input.requestId, state.goalId, state.cupMl, now.toISOString(), actualDay)
+        created = true
+      }
+      const state = this.readState()
+      this.db.exec('COMMIT')
+      return { state, created }
     } catch (error) {
       this.db.exec('ROLLBACK')
       throw error
@@ -200,7 +287,7 @@ export class AppDatabase {
             throw new StaleStateError()
           this.db
             .prepare('UPDATE goal_sessions SET stopped_at = ? WHERE id = ?')
-            .run(new Date().toISOString(), state.goalId)
+            .run(this.now().toISOString(), state.goalId)
         } else {
           if (
             state.day !== input.day ||
@@ -208,7 +295,7 @@ export class AppDatabase {
             (state.status === 'ready' ? state.goalId : null) !== input.expectedGoalId
           )
             throw new StaleStateError()
-          const now = new Date().toISOString()
+          const now = this.now().toISOString()
           if (state.status === 'ready')
             this.db
               .prepare('UPDATE goal_sessions SET stopped_at = ? WHERE id = ?')

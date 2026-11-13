@@ -28,7 +28,10 @@ function App(): React.JSX.Element | null {
     }
   }, [refresh])
 
-  if (isGarden) return result?.ok && result.state.status !== 'setup-required' ? <Garden /> : null
+  if (isGarden)
+    return result?.ok && result.state.status !== 'setup-required' ? (
+      <Garden state={result.state} refresh={refresh} />
+    ) : null
   if (!result)
     return (
       <main className="setup-screen">

@@ -2,7 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { showGardenWindow } from './windows/gardenWindow'
+import { getGardenWindow, showGardenWindow } from './windows/gardenWindow'
 import { initializeGardenControls } from './gardenControls'
 import { initializeStorageIpc } from './storage/ipc'
 
@@ -69,7 +69,7 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  initializeStorageIpc(() => dashboardWindow)
+  initializeStorageIpc(() => dashboardWindow, getGardenWindow)
   createWindow()
   showGardenWindow()
   initializeGardenControls(showDashboard)

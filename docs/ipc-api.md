@@ -1,8 +1,8 @@
 # 내부 API 설계
 
-> 상태: 최초 설정·상태 조회·목표 변경·한 잔 용량 변경을 구현했다. 물 기록과 나머지 API는 아래 설계 초안이다.
+> 상태: 최초 설정·상태 조회·목표 변경·한 잔 용량 변경과 물 한 잔 기록을 구현했다. 취소와 성장·통계 API는 아래 설계 초안이다.
 
-현재 preload는 `gardenWindow.setMousePassthrough`, `hanzanhae.getState`, `hanzanhae.completeSetup`, `hanzanhae.updateSettings`, `hanzanhae.onStateChanged`만 공개한다. 메인은 정해진 앱 화면과 메인 프레임을 검증하며, 최초 설정과 설정 변경 쓰기는 대시보드에서만 허용한다. 상태는 최초 설정 전·활성 목표·목표 없음으로 나누고 실패는 `VALIDATION_ERROR`·`ALREADY_CONFIGURED`·`STALE_STATE`·`STORAGE_ERROR`로 반환한다. 최초 설정의 같은 요청은 최초 성공 결과를, 설정 변경의 같은 요청은 현재 상태를 반환한다. 호출자는 현재 상태를 다시 조회한다. 설정 변경 API의 `kind`는 `cup`, `stop`, `goal`이며, 목표 변경은 화면에 표시한 목표 ID·한국 날짜·기존 총량이 현재와 일치할 때만 처리한다.
+현재 preload는 `gardenWindow.setMousePassthrough`, `hanzanhae.getState`, `hanzanhae.completeSetup`, `hanzanhae.updateSettings`, `hanzanhae.recordCup`, `hanzanhae.onStateChanged`, `hanzanhae.onWaterRecorded`를 공개한다. 메인은 정해진 앱 화면과 메인 프레임을 검증하며, 최초 설정과 설정 변경 쓰기는 대시보드에서만 허용한다. 상태는 최초 설정 전·활성 목표·목표 없음으로 나누고 실패는 `VALIDATION_ERROR`·`ALREADY_CONFIGURED`·`STALE_STATE`·`STORAGE_ERROR`로 반환한다. 최초 설정의 같은 요청은 최초 성공 결과를, 설정 변경의 같은 요청은 현재 상태를 반환한다. 호출자는 현재 상태를 다시 조회한다. 설정 변경 API의 `kind`는 `cup`, `stop`, `goal`이며, 목표 변경은 화면에 표시한 목표 ID·한국 날짜·기존 총량이 현재와 일치할 때만 처리한다.
 
 ## 원칙
 
@@ -18,7 +18,7 @@ type ApiResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; 
 
 ## 후속 설계와 구현 기능 대응
 
-아래 표는 기능 단위 설계다. 현재 목표 중단·재생성은 `updateSettings`의 `stop`·`goal`로 처리한다. 물 기록과 취소는 미구현이다.
+아래 표는 기능 단위 설계다. 현재 목표 중단·재생성은 `updateSettings`의 `stop`·`goal`로 처리한다. 물 기록은 `recordCup`으로 구현했으며 취소는 미구현이다.
 
 ## 메서드 초안
 
@@ -38,7 +38,7 @@ type ApiResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; 
 `createGoal`의 기존 총량은 화면에 표시했던 기준값이다. 처리 시 실제 총량과 다르면 최신 상태를 다시 보여준다. 이미 목표 이상인 총량으로 새 목표를 만들 때 보상은 미정이다.
 
 - `createGoal` 입력 필드 초안은 `requestId`, `targetMl`, `todayTotalMl`, `expectedDateKst`, `expectedCurrentTotalMl`이다. 목표량은 양수 정수이고 입력 총량은 0 이상의 정수다.
-- `recordCup`은 화면에서 임의의 양을 받지 않고 메인에 저장된 한 잔 용량을 사용한다.
+- `recordCup`은 `requestId`, `expectedGoalId`, `day`를 받는다. 정원·대시보드의 메인 프레임만 호출할 수 있으며 화면에서 임의의 양을 받지 않고 메인에 저장된 한 잔 용량을 사용한다. 새로운 기록이 커밋된 경우에만 `onWaterRecorded`로 물주기 연출을 알린다. 같은 요청의 재전송은 현재 상태와 `created: false`를 반환한다.
 - `cancelTodayGoalRecords`에서 취소할 기록이 없으면 `NO_RECORDS`를 반환한다. 조정과 취소 결과의 총량이 음수가 되면 `TOTAL_BELOW_ZERO`로 거절한다.
 
 ## 쓰기 요청과 날짜
@@ -47,7 +47,7 @@ type ApiResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; 
 - 같은 ID와 같은 입력의 재요청은 저장된 성공 결과를 반환하고 다시 저장하지 않는다. 같은 ID에 다른 입력을 쓰면 충돌 오류다. 결과는 최초 처리 당시 상태일 수 있으므로 필요하면 대시보드를 다시 조회한다.
 - 앱 재시작 후 미완료 요청의 자동 재시도는 MVP에 포함하지 않는다. 화면은 현재 상태를 다시 읽고 사용자가 판단한다.
 - 기록·취소·목표 재생성 요청은 화면이 본 한국 날짜 `expectedDateKst`를 보낸다. 메인은 현재 한국 날짜를 직접 계산해 다르면 거절한다. 입력된 날짜를 저장 시각의 기준으로 신뢰하지 않는다.
-- 물 기록과 성장, 요청 결과처럼 함께 바뀌어야 하는 데이터는 같은 트랜잭션으로 저장한다.
+- 물 기록과 요청 ID는 같은 트랜잭션으로 저장한다. 성장·생기를 구현할 때는 연관 변경도 같은 트랜잭션으로 처리한다.
 
 ## 대시보드와 창 사이 동기화
 

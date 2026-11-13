@@ -2,7 +2,13 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
-import type { AppResult, SetupInput, SettingsInput } from '../../shared/appState'
+import type {
+  AppResult,
+  SetupInput,
+  SettingsInput,
+  RecordCupInput,
+  RecordCupResult
+} from '../../shared/appState'
 import { AlreadyConfiguredError, AppDatabase, InvalidSetupError, StaleStateError } from './database'
 
 let database: AppDatabase | undefined
@@ -28,7 +34,10 @@ function trusted(event: Electron.IpcMainInvokeEvent): boolean {
   }
 }
 
-export function initializeStorageIpc(getDashboard: () => BrowserWindow | null): void {
+export function initializeStorageIpc(
+  getDashboard: () => BrowserWindow | null,
+  getGarden: () => BrowserWindow | null
+): void {
   ipcMain.handle('app:get-state', (event): AppResult => {
     if (!trusted(event)) return { ok: false, code: 'VALIDATION_ERROR' }
     try {
@@ -70,6 +79,34 @@ export function initializeStorageIpc(getDashboard: () => BrowserWindow | null): 
       for (const window of BrowserWindow.getAllWindows())
         window.webContents.send('app:state-changed')
       return { ok: true, state }
+    } catch (error) {
+      if (error instanceof InvalidSetupError) return { ok: false, code: 'VALIDATION_ERROR' }
+      if (error instanceof StaleStateError) return { ok: false, code: 'STALE_STATE' }
+      return { ok: false, code: 'STORAGE_ERROR' }
+    }
+  })
+  ipcMain.handle('app:record-cup', (event, input: RecordCupInput): RecordCupResult => {
+    if (
+      !trusted(event) ||
+      (event.sender !== getDashboard()?.webContents && event.sender !== getGarden()?.webContents) ||
+      !input ||
+      typeof input !== 'object'
+    )
+      return { ok: false, code: 'VALIDATION_ERROR' }
+    try {
+      const result = getDatabase().recordCup(input)
+      if (result.created) {
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (window.isDestroyed() || window.webContents.isDestroyed()) continue
+          try {
+            window.webContents.send('app:state-changed')
+            window.webContents.send('app:water-recorded')
+          } catch {
+            // 저장된 결과는 창이 닫히는 중 발생한 알림 오류와 구분한다.
+          }
+        }
+      }
+      return { ok: true, ...result }
     } catch (error) {
       if (error instanceof InvalidSetupError) return { ok: false, code: 'VALIDATION_ERROR' }
       if (error instanceof StaleStateError) return { ok: false, code: 'STALE_STATE' }

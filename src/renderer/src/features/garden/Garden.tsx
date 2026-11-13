@@ -1,10 +1,37 @@
 import { useEffect, useState } from 'react'
+import type { AppState } from '../../../../shared/appState'
+import { useRecordCup } from '../water/useRecordCup'
 import stage1 from '../../assets/stage1.webp'
 import wateringCan from '../../assets/icons/watering-can.webp'
 import './garden.css'
 
-function Garden(): React.JSX.Element {
+function Garden({
+  state,
+  refresh
+}: {
+  state: Exclude<AppState, { status: 'setup-required' }>
+  refresh: () => Promise<void>
+}): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false)
+  const [pouring, setPouring] = useState(false)
+  const { record, busy, error } = useRecordCup(state, refresh)
+
+  useEffect(() => {
+    let timer: number | undefined
+    const unsubscribe = window.hanzanhae.onWaterRecorded(() => {
+      window.clearTimeout(timer)
+      setIsOpen(true)
+      setPouring(true)
+      timer = window.setTimeout(() => {
+        setPouring(false)
+        setIsOpen(false)
+      }, 1700)
+    })
+    return () => {
+      window.clearTimeout(timer)
+      unsubscribe()
+    }
+  }, [])
 
   useEffect(() => {
     let currentIgnore: boolean | null = null
@@ -35,8 +62,8 @@ function Garden(): React.JSX.Element {
   }, [])
 
   return (
-    <main className="garden-surface" aria-label="정원 미리보기">
-      <div className={`garden-widget ${isOpen ? 'is-open' : ''}`}>
+    <main className="garden-surface" aria-label="작은 정원">
+      <div className={`garden-widget ${isOpen ? 'is-open' : ''} ${pouring ? 'is-pouring' : ''}`}>
         <button
           className="garden-plant"
           type="button"
@@ -44,7 +71,9 @@ function Garden(): React.JSX.Element {
           aria-label={isOpen ? '물뿌리개 닫기' : '물뿌리개 보기'}
           aria-expanded={isOpen}
           aria-controls="garden-watering-can"
-          onClick={() => setIsOpen((open) => !open)}
+          onClick={() => {
+            if (!pouring) setIsOpen((open) => !open)
+          }}
         >
           <span className="garden-layer" aria-hidden="true">
             <span className="garden-box">
@@ -60,12 +89,31 @@ function Garden(): React.JSX.Element {
           className="garden-can"
           type="button"
           data-garden-interactive
-          disabled
-          aria-label="물 마시기 기록은 목표 설정 후 사용할 수 있어요"
-          title="목표 설정과 물 기록 기능은 아직 준비 중이에요"
+          disabled={busy || pouring || state.status !== 'ready'}
+          aria-label={
+            state.status === 'ready' ? '물 한 잔 기록하기' : '목표를 설정해야 물을 기록할 수 있어요'
+          }
+          title={
+            state.status === 'ready'
+              ? `물 한 잔 기록하기 (+${state.cupMl}ml)`
+              : '설정에서 새 목표를 시작해 주세요'
+          }
+          onClick={() => void record()}
         >
           <img src={wateringCan} alt="" />
         </button>
+        {pouring && (
+          <span className="garden-water" aria-hidden="true">
+            {Array.from({ length: 8 }, (_, i) => (
+              <i key={i} style={{ animationDelay: `${i * 85}ms` }} />
+            ))}
+          </span>
+        )}
+        {error && (
+          <span className="garden-error" role="alert">
+            {error}
+          </span>
+        )}
       </div>
     </main>
   )

@@ -45,6 +45,7 @@ test('최초 설정은 재실행해도 유지되고 같은 요청은 중복 저�
       goalMl: 1500,
       cupMl: 250,
       todayMl: 0,
+      todayRecords: [],
       day,
       plantStage: 'seedling'
     }
@@ -77,17 +78,30 @@ test('저장 도중 실패하면 모든 데이터가 취소되고 다시 시도�
     inspector.exec('DROP TRIGGER fail_plant')
     assert.equal(db.completeSetup(input).status, 'ready')
     inspector.exec("UPDATE goal_sessions SET stopped_at = '2026-11-13T00:00:00Z'")
-    assert.deepEqual(db.readState(), { status: 'goal-stopped', cupMl: 200, todayMl: 0, day })
+    assert.deepEqual(db.readState(), {
+      status: 'goal-stopped',
+      cupMl: 200,
+      todayMl: 0,
+      todayRecords: [],
+      day
+    })
     assert.deepEqual(db.completeSetup(input), {
       status: 'ready',
       goalId: 1,
       goalMl: 1200,
       cupMl: 200,
       todayMl: 0,
+      todayRecords: [],
       day,
       plantStage: 'seedling'
     })
-    assert.deepEqual(db.readState(), { status: 'goal-stopped', cupMl: 200, todayMl: 0, day })
+    assert.deepEqual(db.readState(), {
+      status: 'goal-stopped',
+      cupMl: 200,
+      todayMl: 0,
+      todayRecords: [],
+      day
+    })
     assert.throws(() => db.completeSetup({ ...input, requestId: 'new' }), AlreadyConfiguredError)
     inspector.close()
     db.close()
@@ -221,7 +235,7 @@ test('설정 저장 실패는 이전 목표와 조정을 함께 보존한다', (
   }
 })
 
-test('버전 1 데이터는 설정을 유지하며 버전 2로 이전한다', () => {
+test('버전 1 데이터는 설정을 유지하며 버전 3으로 이전한다', () => {
   const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-migrate-'))
   const path = join(dir, 'test.sqlite')
   try {
@@ -229,11 +243,136 @@ test('버전 1 데이터는 설정을 유지하며 버전 2로 이전한다', ()
     const expected = db.completeSetup({ requestId: 'setup', goalMl: 1700, cupMl: 250 })
     db.close()
     const old = new DatabaseSync(path)
-    old.exec('DROP TABLE daily_adjustments; DROP TABLE settings_receipts; PRAGMA user_version = 1')
+    old.exec(
+      'DROP TABLE water_records; DROP TABLE daily_adjustments; DROP TABLE settings_receipts; PRAGMA user_version = 1'
+    )
     old.close()
     const migrated = new AppDatabase(path)
     assert.deepEqual(migrated.readState(), expected)
     assert.equal(migrated.updateSettings({ requestId: 'cup', kind: 'cup', cupMl: 300 }).cupMl, 300)
+    migrated.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('물 기록은 용량을 보존하고 조정·이전 목표와 합산하며 중복 요청을 무시한다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-water-'))
+  const path = join(dir, 'test.sqlite')
+  try {
+    const db = new AppDatabase(path)
+    const initial = db.completeSetup({ requestId: 'setup', goalMl: 300, cupMl: 200 })
+    const first = { requestId: 'first', expectedGoalId: initial.goalId, day }
+    const result = db.recordCup(first)
+    assert.equal(result.created, true)
+    assert.equal(result.state.todayMl, 200)
+    assert.equal(result.state.todayRecords.length, 1)
+    db.updateSettings({ requestId: 'cup', kind: 'cup', cupMl: 250 })
+    assert.equal(db.recordCup(first).created, false)
+    assert.throws(() => db.recordCup({ ...first, expectedGoalId: 999 }), InvalidSetupError)
+    const second = db.recordCup({ ...first, requestId: 'second' }).state
+    assert.equal(second.todayMl, 450)
+    assert.deepEqual(
+      second.todayRecords.map((r) => r.amountMl),
+      [250, 200]
+    )
+    const changed = db.updateSettings({
+      requestId: 'goal',
+      kind: 'goal',
+      goalMl: 2000,
+      todayMl: 700,
+      expectedTodayMl: 450,
+      expectedGoalId: initial.goalId,
+      day
+    })
+    assert.equal(changed.todayMl, 700)
+    assert.equal(changed.todayRecords.length, 2)
+    assert.throws(() => db.recordCup({ ...first, requestId: 'old-goal' }), StaleStateError)
+    const third = db.recordCup({ requestId: 'third', expectedGoalId: changed.goalId, day }).state
+    assert.equal(third.todayMl, 950)
+    assert.equal(third.todayRecords.length, 3)
+    db.close()
+    const reopened = new AppDatabase(path)
+    assert.deepEqual(reopened.readState(), third)
+    reopened.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('물 기록 저장 실패는 데이터와 요청 ID를 남기지 않고 재시도할 수 있다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-water-fail-'))
+  const path = join(dir, 'test.sqlite')
+  try {
+    const db = new AppDatabase(path)
+    const initial = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 200 })
+    const sql = new DatabaseSync(path)
+    sql.exec(
+      "CREATE TRIGGER fail_water BEFORE INSERT ON water_records BEGIN SELECT RAISE(ABORT, 'failure'); END"
+    )
+    const input = { requestId: 'retry', expectedGoalId: initial.goalId, day }
+    assert.throws(() => db.recordCup(input))
+    assert.deepEqual(db.readState(), initial)
+    assert.equal(sql.prepare('SELECT COUNT(*) AS n FROM water_records').get().n, 0)
+    sql.exec('DROP TRIGGER fail_water')
+    assert.equal(db.recordCup(input).state.todayMl, 200)
+    db.updateSettings({ requestId: 'stop', kind: 'stop', expectedGoalId: initial.goalId })
+    assert.throws(() => db.recordCup({ ...input, requestId: 'stopped' }), StaleStateError)
+    assert.equal(db.recordCup(input).created, false)
+    sql.close()
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('한국 자정 이후 이전 날짜 요청은 거절하고 새 날짜 기록을 구분한다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-water-day-'))
+  const path = join(dir, 'test.sqlite')
+  try {
+    let now = new Date('2026-11-13T14:59:59.000Z')
+    const db = new AppDatabase(path, () => now)
+    const initial = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 200 })
+    assert.equal(initial.day, '2026-11-13')
+    const old = { requestId: 'before', expectedGoalId: initial.goalId, day: initial.day }
+    assert.equal(db.recordCup(old).state.todayMl, 200)
+    now = new Date('2026-11-13T15:00:00.000Z')
+    assert.equal(db.readState().day, '2026-11-14')
+    assert.equal(db.readState().todayMl, 0)
+    assert.throws(() => db.recordCup({ ...old, requestId: 'stale' }), StaleStateError)
+    assert.equal(db.recordCup({ ...old, requestId: 'after', day: '2026-11-14' }).state.todayMl, 200)
+    assert.equal(db.recordCup(old).created, false)
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('버전 2 데이터의 목표와 조정을 보존하며 물 기록 테이블을 추가한다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-water-migration-'))
+  const path = join(dir, 'test.sqlite')
+  try {
+    const db = new AppDatabase(path)
+    const initial = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 250 })
+    const changed = db.updateSettings({
+      requestId: 'change',
+      kind: 'goal',
+      goalMl: 1500,
+      todayMl: 300,
+      expectedTodayMl: 0,
+      expectedGoalId: initial.goalId,
+      day
+    })
+    db.close()
+    const old = new DatabaseSync(path)
+    old.exec('DROP TABLE water_records; PRAGMA user_version = 2')
+    old.close()
+    const migrated = new AppDatabase(path)
+    assert.deepEqual(migrated.readState(), changed)
+    assert.equal(
+      migrated.recordCup({ requestId: 'cup', expectedGoalId: changed.goalId, day }).state.todayMl,
+      550
+    )
     migrated.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })

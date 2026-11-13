@@ -1,6 +1,6 @@
 # 최초 설정과 로컬 저장 PLAN
 
-> 상태: 최초 설정과 SQLite 복원 구현·검증 중. 실제 물 기록은 후속이다. 제품 정책의 정본은 [기능 명세](../features.md), 데이터·IPC 설계는 [데이터 설계](../database.md)와 [내부 API](../ipc-api.md)다.
+> 이 문서는 최초 설정 작업 당시의 범위다. 이후 물 기록은 [별도 계획](water-record-PLAN.md)으로 구현했다. 제품 정책의 정본은 [기능 명세](../features.md), 데이터·IPC 설계는 [데이터 설계](../database.md)와 [내부 API](../ipc-api.md)다.
 
 ## 기본 정보
 
