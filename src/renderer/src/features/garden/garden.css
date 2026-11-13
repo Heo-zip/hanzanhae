@@ -1,0 +1,147 @@
+/* 정원은 배경 없이 화분만 표시하는 별도의 투명 창이다. */
+html.garden-window,
+html.garden-window body,
+html.garden-window #root {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.garden-surface {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.garden-widget {
+  position: absolute;
+  /* 화분 이미지의 오른쪽·아래 투명 여백을 제외하고 보이는 바닥을 맞춘다. */
+  right: -26px;
+  bottom: -2px;
+  width: 160px;
+  height: 160px;
+  user-select: none;
+}
+
+.garden-plant {
+  position: relative;
+  display: block;
+  width: 160px;
+  height: 160px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.garden-layer {
+  --rim: 59.625%;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.garden-box {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 160px;
+  height: 160px;
+}
+
+.garden-layer img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  -webkit-user-drag: none;
+}
+
+/* 이미지의 화분과 잎을 나눠 잎 부분만 부드럽게 움직인다. */
+.garden-base {
+  clip-path: inset(var(--rim) 0 0 0);
+}
+
+.garden-top-wrap {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% var(--rim);
+}
+
+.garden-top {
+  clip-path: inset(0 0 calc(100% - var(--rim)) 0);
+  transform-origin: 50% var(--rim);
+  animation: garden-sway 4.2s ease-in-out infinite alternate;
+}
+
+@keyframes garden-sway {
+  from {
+    transform: skewX(-1.8deg);
+  }
+  to {
+    transform: skewX(1.8deg);
+  }
+}
+
+.garden-can {
+  position: absolute;
+  z-index: 3;
+  /* 화면 끝에서도 잘리지 않게 화분의 왼쪽 위에 펼친다. */
+  top: -38px;
+  left: -20px;
+  width: 76px;
+  height: 72px;
+  padding: 0;
+  border: 0;
+  background: none;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(24px) scale(0.2) rotate(12deg);
+  transform-origin: 50% 50%;
+  transition:
+    transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 0.2s;
+  filter: drop-shadow(0 8px 10px rgba(30, 60, 100, 0.18));
+}
+
+.garden-can img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* 왼쪽에 둔 물뿌리개의 주둥이가 오른쪽의 화분을 향하게 한다. */
+  scale: -1 1;
+  pointer-events: none;
+  animation: garden-bob 2.4s ease-in-out infinite;
+  -webkit-user-drag: none;
+}
+
+.garden-widget.is-open .garden-can {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+@keyframes garden-bob {
+  50% {
+    transform: translateY(-4px) rotate(-2deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .garden-top,
+  .garden-can img {
+    animation: none;
+  }
+
+  .garden-can {
+    transition: none;
+  }
+}

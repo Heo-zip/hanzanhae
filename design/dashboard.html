@@ -65,12 +65,11 @@
   /* ── 창 ── */
   .window {
     width: min(1280px, 100%); aspect-ratio: 16 / 10; min-height: 760px; background: var(--window);
-    border-radius: 14px; overflow: hidden; display: grid; grid-template-columns: 232px 1fr;
+    border-radius: 14px; overflow: hidden; display: grid; grid-template-columns: 232px 1fr; position: relative;
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 24px 60px rgba(20, 30, 40, 0.18);
   }
   .side { background: var(--side); padding: 18px 20px 24px; display: flex; flex-direction: column; gap: 8px; border-right: 1px solid var(--line); }
   .lights { display: flex; gap: 8px; padding: 0 4px 20px; }
-  .lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
   .brand { display: flex; justify-content: center; padding: 8px 0 36px; border: 0; background: none; cursor: pointer; }
   .brand:hover .mark { transform: scale(1.03); }
   .brand .mark { width: 156px; height: auto; transition: transform 0.2s; }
@@ -289,6 +288,100 @@
   .toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
   .toast button { border: 0; background: rgba(255, 255, 255, 0.16); color: #fff; padding: 4px 10px; border-radius: 99px; cursor: pointer; font-weight: 600; }
 
+  /* ── 첫 실행: 목표와 한 잔 용량을 묻는 설정 화면 (창 전체를 덮는다) ── */
+  .onboard {
+    position: absolute; inset: 0; z-index: 10; display: none; flex-direction: column; align-items: center;
+    background: linear-gradient(180deg, var(--sky-a) 0%, var(--window) 62%); overflow: hidden;
+  }
+  .window.setup .onboard { display: flex; }
+  .onboard::before, .onboard::after { content: ''; position: absolute; border-radius: 50%; z-index: 0; }
+  .onboard::before { width: 900px; height: 260px; left: -120px; bottom: -190px; background: var(--hill-a); }
+  .onboard::after { width: 760px; height: 240px; right: -180px; bottom: -190px; background: var(--hill-b); }
+  .ob-top { position: relative; z-index: 1; width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; }
+  .ob-top .lights { padding: 0; width: 52px; height: 12px; }
+  .ob-dots { display: flex; gap: 6px; }
+  .ob-dots i { width: 8px; height: 8px; border-radius: 99px; background: var(--line); display: block; transition: width 0.3s, background 0.3s; }
+  .ob-dots i.on { width: 24px; background: var(--brand); }
+  .ob-body { position: relative; z-index: 2; flex: 1; width: min(560px, 100% - 48px); display: flex; flex-direction: column; justify-content: center; padding-bottom: 170px; }
+  .ob-step { display: none; flex-direction: column; align-items: center; text-align: center; animation: obIn 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+  .ob-step.on { display: flex; }
+  @keyframes obIn { from { opacity: 0; transform: translateY(14px); } }
+  .ob-step .eyebrow { font-size: 13px; font-weight: 700; color: var(--brand-ink); margin-bottom: 10px; }
+  .ob-step h1 { margin: 0 0 12px; font-size: 32px; line-height: 1.35; letter-spacing: -0.6px; }
+  .ob-step p.lead { margin: 0; font-size: 15px; color: var(--text-sub); line-height: 1.6; }
+  .ob-step .wordmark { width: 220px; margin-bottom: 28px; }
+  .amount-field {
+    margin-top: 36px; display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+    background: var(--card); border: 2px solid var(--line); border-radius: 22px; box-shadow: var(--shadow); transition: border-color 0.2s;
+  }
+  .amount-field:focus-within { border-color: var(--brand); }
+  .amount-field.bad { border-color: var(--danger); }
+  .amount-field input {
+    width: 200px; border: 0; outline: 0; background: none; font: inherit; font-size: 44px; font-weight: 800;
+    text-align: right; color: var(--text); letter-spacing: -1px; -moz-appearance: textfield;
+  }
+  .amount-field input::-webkit-outer-spin-button, .amount-field input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .amount-field input::placeholder { color: var(--line); }
+  .amount-field .unit { font-size: 20px; font-weight: 700; color: var(--text-sub); padding-right: 6px; }
+  .step-btn { width: 44px; height: 44px; border: 0; border-radius: 14px; background: var(--card-sub); font-size: 22px; font-weight: 700; color: var(--text-sub); cursor: pointer; }
+  .step-btn:hover { color: var(--text); }
+  .field-msg { min-height: 22px; margin-top: 10px; font-size: 13px; color: var(--text-sub); }
+  .field-msg.bad { color: var(--danger); }
+  .cup-preview { display: flex; align-items: flex-end; gap: 28px; margin-top: 32px; }
+  .cup-preview .glass { width: 64px; transition: height 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  .cup-preview .amount-field { margin-top: 0; }
+  .ob-done-art { position: relative; width: 190px; height: 190px; margin-bottom: 4px; }
+  .ob-done-art img.can { position: absolute; width: 96px; right: -64px; top: -6px; transform: rotate(-18deg); }
+  .ob-done-art img.pot { width: 190px; height: 190px; }
+  .chips { display: flex; gap: 10px; margin: 22px 0 18px; flex-wrap: wrap; justify-content: center; }
+  .chips span { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 99px; background: var(--card); border: 1px solid var(--line); font-size: 14px; color: var(--text-sub); }
+  .chips b { color: var(--text); }
+  .chips img { width: 22px; height: 22px; }
+  .ob-actions { display: flex; gap: 12px; margin-top: 32px; width: 100%; max-width: 380px; }
+  .ob-actions button { flex: 1; border: 0; border-radius: 16px; padding: 16px; font: inherit; font-size: 16px; font-weight: 700; cursor: pointer; transition: filter 0.2s, transform 0.1s; }
+  .ob-actions button:active { transform: scale(0.98); }
+  .ob-actions .primary { background: var(--brand); color: #fff; }
+  .ob-actions .primary:hover { filter: brightness(1.05); }
+  .ob-actions .ghost { flex: 0 0 104px; background: var(--card-sub); color: var(--text-sub); }
+  /* 언덕 위 화분 정원: 새싹부터 꽃까지 성장 단계를 양옆에 둔다. 가운데는 글을 위해 비운다. */
+  .ob-garden { position: absolute; inset: auto 0 0 0; height: 300px; z-index: 1; pointer-events: none; }
+  .ob-garden img {
+    position: absolute; bottom: var(--b); width: var(--w); transform-origin: 50% 92%;
+    animation: potIn 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both, potSway 4.5s ease-in-out infinite alternate;
+    animation-delay: var(--d), calc(var(--d) + 0.7s);
+  }
+  .ob-garden .p1 { left: 3%; --w: 150px; --b: 10px; --d: 0.05s; }
+  .ob-garden .p2 { left: 15%; --w: 200px; --b: 2px; --d: 0.15s; }
+  .ob-garden .p3 { right: 15%; --w: 230px; --b: 0px; --d: 0.25s; }
+  .ob-garden .p4 { right: 2%; --w: 260px; --b: 8px; --d: 0.35s; }
+  @keyframes potIn { from { opacity: 0; transform: translateY(40px) scale(0.6); } }
+  @keyframes potSway { from { rotate: -1.4deg; } to { rotate: 1.4deg; } }
+  @media (prefers-reduced-motion: reduce) { .ob-garden img { animation: none; } }
+
+  /* ── 설정: 목표 바꾸기 패널, 한 잔 용량 직접 입력 ── */
+  .goal-actions { display: flex; gap: 8px; }
+  .btn.line { background: none; border: 1.5px solid var(--line); color: var(--text); }
+  .btn.line:hover { border-color: var(--brand); color: var(--brand-ink); }
+  .btn.primary { background: var(--brand); color: #fff; }
+  .btn.ghost { background: none; color: var(--text-sub); }
+  .btn.ghost.danger { color: var(--danger); }
+  .goal-edit { display: none; margin-top: 20px; padding: 22px; border-radius: 18px; background: var(--card-sub); }
+  .goal-edit.on { display: block; animation: obIn 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
+  .goal-edit .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .goal-edit label { display: flex; flex-direction: column; gap: 8px; min-width: 0; font-size: 13px; color: var(--text-sub); font-weight: 600; }
+  .mini-field { display: flex; align-items: center; gap: 6px; background: var(--card); border: 2px solid var(--line); border-radius: 14px; padding: 8px 14px; }
+  .mini-field:focus-within { border-color: var(--brand); }
+  .mini-field input { flex: 1; width: 100%; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 22px; font-weight: 800; color: var(--text); -moz-appearance: textfield; }
+  .mini-field input::-webkit-outer-spin-button, .mini-field input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .mini-field span { font-size: 14px; color: var(--text-sub); font-weight: 600; }
+  .goal-edit .note { margin: 14px 0 18px; font-size: 13px; color: var(--text-sub); line-height: 1.6; }
+  .goal-edit .row-btns { display: flex; justify-content: flex-end; gap: 8px; }
+  .cup-edit { display: flex; align-items: flex-end; gap: 24px; }
+  .cup-edit .glass { width: 48px; transition: height 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  .cup-edit .mini-field { width: 200px; }
+  .saved { font-size: 13px; color: var(--brand-ink); font-weight: 600; opacity: 0; transition: opacity 0.3s; align-self: center; }
+  .saved.on { opacity: 1; }
+
   /* ── 반응형 ── */
   /* 좁은 창: 오른쪽 열을 아래로 내리고, 히어로 글과 화분이 겹치지 않게 한다 */
   @media (max-width: 1180px) {
@@ -374,12 +467,81 @@
     <button data-v="light" class="on">라이트</button>
     <button data-v="dark">다크</button>
   </div>
+  <button class="btn" id="replaySetup" style="background:var(--card);box-shadow:var(--shadow)">첫 실행 화면 보기</button>
   <a href="garden.html">← 정원 위젯</a>
 </div>
 
-<div class="window">
+<div class="window setup" id="window">
+  <!-- 첫 실행: 목표가 없으면 대시보드 대신 이 화면을 보여준다 -->
+  <section class="onboard" id="onboard" data-step="0" aria-label="처음 설정">
+    <div class="ob-top">
+      <div class="lights" aria-hidden="true"></div>
+      <div class="ob-dots" id="obDots"><i></i><i></i><i></i><i></i></div>
+      <span style="width:52px"></span>
+    </div>
+    <div class="ob-body">
+      <div class="ob-step on" data-step="0">
+        <img class="wordmark" src="assets/icons/wordmark.webp" alt="한잔해" />
+        <h1>물을 마시는 작은 습관으로<br />나만의 화분을 키워요</h1>
+        <p class="lead">물을 마신 뒤 화분에 물을 주면 화분이 자라요.<br />시작하기 전에 두 가지만 정해 주세요.</p>
+        <div class="ob-actions"><button class="primary" data-next>시작하기</button></div>
+      </div>
+
+      <div class="ob-step" data-step="1">
+        <span class="eyebrow">1 / 2</span>
+        <h1>하루에 물을 얼마나 마실까요?</h1>
+        <p class="lead">하루 목표를 채우면 화분이 자라요.<br />설정에서 언제든 바꿀 수 있어요.</p>
+        <div class="amount-field" id="goalField">
+          <button class="step-btn" data-step-by="-100" aria-label="100ml 줄이기">−</button>
+          <input id="obGoal" type="number" inputmode="numeric" min="1" step="1" placeholder="0" aria-label="하루 목표(ml)" />
+          <span class="unit">ml</span>
+          <button class="step-btn" data-step-by="100" aria-label="100ml 늘리기">+</button>
+        </div>
+        <div class="field-msg" id="goalMsg">ml 단위로 입력해 주세요</div>
+        <div class="ob-actions"><button class="ghost" data-prev>이전</button><button class="primary" data-next>다음</button></div>
+      </div>
+
+      <div class="ob-step" data-step="2">
+        <span class="eyebrow">2 / 2</span>
+        <h1>한 번 마실 때 얼마나 마시나요?</h1>
+        <p class="lead">물뿌리개를 한 번 누르면 이만큼 기록돼요.<br />평소 쓰는 컵이나 텀블러를 떠올려 주세요.</p>
+        <div class="cup-preview">
+          <span class="glass" id="obGlass" style="height:60px"><i style="height:85%"></i></span>
+          <div class="amount-field" id="cupField">
+            <button class="step-btn" data-step-by="-50" aria-label="50ml 줄이기">−</button>
+            <input id="obCup" type="number" inputmode="numeric" min="1" step="1" placeholder="0" aria-label="한 잔 용량(ml)" />
+            <span class="unit">ml</span>
+            <button class="step-btn" data-step-by="50" aria-label="50ml 늘리기">+</button>
+          </div>
+        </div>
+        <div class="field-msg" id="cupMsg">ml 단위로 입력해 주세요</div>
+        <div class="ob-actions"><button class="ghost" data-prev>이전</button><button class="primary" data-next>다음</button></div>
+      </div>
+
+      <div class="ob-step" data-step="3">
+        <div class="ob-done-art">
+          <img class="pot" src="assets/stage1.webp" alt="새싹 화분" />
+          <img class="can" src="assets/icons/watering-can.webp" alt="" />
+        </div>
+        <h1>준비됐어요!</h1>
+        <div class="chips">
+          <span><img src="assets/icons/stat-left.webp" alt="" />하루 <b class="num" id="obSumGoal"></b></span>
+          <span><img src="assets/icons/stat-cups.webp" alt="" />한 잔 <b class="num" id="obSumCup"></b></span>
+        </div>
+        <p class="lead">화분은 Dock 위에 놓아둘게요.<br />물을 마신 뒤 화분을 누르고, 나온 물뿌리개로 물을 주세요.</p>
+        <div class="ob-actions"><button class="ghost" data-prev>이전</button><button class="primary" id="obFinish">화분 키우기 시작</button></div>
+      </div>
+    </div>
+    <div class="ob-garden" aria-hidden="true">
+      <img class="p1" src="assets/stage1.webp" alt="" />
+      <img class="p2" src="assets/stage2.webp" alt="" />
+      <img class="p3" src="assets/stage3.webp" alt="" />
+      <img class="p4" src="assets/stage4.webp" alt="" />
+    </div>
+  </section>
+
   <aside class="side">
-    <div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+    <div class="lights" aria-hidden="true"></div>
     <button class="brand" id="brandHome" title="오늘로 이동"><img class="mark" src="assets/icons/wordmark.webp" alt="한잔해 홈" /></button>
     <button class="nav on" data-view="today"><img src="assets/icons/nav-today.webp" alt="" />오늘</button>
     <button class="nav" data-view="history"><img src="assets/icons/nav-history.webp" alt="" />기록</button>
@@ -470,15 +632,39 @@
       <div class="head"><h1>설정</h1><span>기록은 이 Mac에만 저장돼요</span></div>
       <div class="settings">
         <section class="sset">
-          <div class="sset-head"><h2>하루 목표</h2><p>목표를 바꾸려면 지금 목표를 멈추고 새로 만들어요. 지금까지의 기록과 화분은 그대로 남아요.</p></div>
-          <div class="goal-row">
-            <div class="goal-big num"><b id="goalSet"></b><span>ml</span></div>
-            <button class="btn danger" id="stopGoal">목표 멈추기</button>
+          <div class="sset-head"><h2>하루 목표</h2><p>목표를 바꾸면 지금 목표는 멈추고 새 목표로 이어서 기록해요. 지금까지의 기록과 화분은 그대로 남아요.</p></div>
+          <div>
+            <div class="goal-row">
+              <div class="goal-big num"><b id="goalSet"></b><span>ml</span></div>
+              <div class="goal-actions">
+                <button class="btn line" id="editGoal">목표 바꾸기</button>
+                <button class="btn ghost danger" id="stopGoal">멈추기</button>
+              </div>
+            </div>
+            <div class="goal-edit" id="goalEdit">
+              <div class="fields">
+                <label>새 하루 목표
+                  <span class="mini-field"><input id="newGoal" type="number" min="1" inputmode="numeric" placeholder="0" /><span>ml</span></span>
+                </label>
+                <label>오늘 이미 마신 양
+                  <span class="mini-field"><input id="todayTotal" type="number" min="0" inputmode="numeric" /><span>ml</span></span>
+                </label>
+              </div>
+              <p class="note">앱에 기록하지 않고 마신 물이 있다면 오늘 마신 양에 함께 적어 주세요. 이미 기록한 양에 다시 더하지 않아요.</p>
+              <div class="row-btns">
+                <button class="btn ghost" id="cancelGoal">취소</button>
+                <button class="btn primary" id="saveGoal">새 목표로 시작</button>
+              </div>
+            </div>
           </div>
         </section>
         <section class="sset">
-          <div class="sset-head"><h2>한 잔 용량</h2><p>물 마셨어요 버튼을 한 번 누를 때 기록되는 양이에요.</p></div>
-          <div class="cup-pick" id="cupPick"></div>
+          <div class="sset-head"><h2>한 잔 용량</h2><p>물뿌리개를 한 번 누를 때 기록되는 양이에요. 바꾸면 다음 기록부터 적용돼요.</p></div>
+          <div class="cup-edit">
+            <span class="glass" id="setGlass"><i style="height:85%"></i></span>
+            <span class="mini-field"><input id="cupInput" type="number" min="1" inputmode="numeric" /><span>ml</span></span>
+            <span class="saved" id="cupSaved">저장됐어요</span>
+          </div>
         </section>
         <section class="sset">
           <div class="sset-head"><h2>화분 놓는 곳</h2><p>화분이 고정될 바닥을 골라요. 좌우 위치는 화분을 끌어서 옮겨요.</p></div>
@@ -503,10 +689,6 @@
             <div class="set">
               <div><b>로그인 시 자동 실행</b><small>Mac을 켜면 화분도 함께 떠요</small></div>
               <button class="switch" role="switch" aria-checked="false" aria-label="로그인 시 자동 실행"></button>
-            </div>
-            <div class="set">
-              <div><b>기록 카드 열기</b><small>화분 위에 뜨는 작은 기록 창</small></div>
-              <div class="seg"><button class="on">클릭 시</button><button>마우스 올릴 때</button></div>
             </div>
           </div>
         </section>
@@ -534,11 +716,11 @@
     today: [{ t: '09:12', ml: 250 }, { t: '10:40', ml: 250 }, { t: '13:05', ml: 250 }],
     past: [1250, 1500, 1750, 900, 1600, 1500] // 6일 전 → 어제
   };
-  const CUPS = [150, 200, 250, 300, 500];
 
   const $ = (id) => document.getElementById(id);
   const fmt = (n) => n.toLocaleString('ko-KR');
-  const total = () => S.today.reduce((a, r) => a + r.ml, 0);
+  // 오늘 총량 = 오늘 기록 합 + 목표를 바꿀 때 입력한 미기록 섭취량 조정
+  const total = () => S.today.reduce((a, r) => a + r.ml, 0) + (S.adjust || 0);
   const stageIdx = () => STAGES.reduce((i, s, k) => (S.achievedDays >= s.days ? k : i), 0);
   const DROP = '<img src="assets/icons/drop.webp" alt="">';
 
@@ -576,7 +758,9 @@
       ? `오늘 목표 달성!<br><em>${st.name}</em>이 활짝 웃어요`
       : wilted
         ? `화분이 목말라 해요<br>물 <em>한 잔</em> 어때요?`
-        : `오늘 <em>${S.today.length}잔</em> 마셨어요<br>화분이 생생해요`;
+        : !S.today.length
+          ? `화분이 오늘의<br><em>첫 잔</em>을 기다려요`
+          : `오늘 <em>${S.today.length}잔</em> 마셨어요<br>화분이 생생해요`;
     $('heroSub').textContent = done ? '내일도 이어가면 화분이 더 자라요.' : `목표까지 ${fmt(S.goal - t)}ml, 약 ${Math.ceil((S.goal - t) / S.cup)}잔 남았어요.`;
     $('steps').innerHTML = STAGES.map((_, i) => `<i class="${i <= k ? 'on' : ''}"></i>`).join('');
     $('growText').textContent = next ? `${st.name} · ${next.days - S.achievedDays}일 더 채우면 ${next.name}` : `${st.name} · 다 자랐어요`;
@@ -678,12 +862,13 @@
     $('sBest').innerHTML = `${days[best].label}<small>${fmt(vals[best])}ml</small>`;
   }
 
+  // 한 잔 용량에 비례하는 유리컵 높이 (1L 이상은 같은 높이)
+  const glassH = (ml) => Math.round(40 + (Math.min(ml || 0, 1000) / 1000) * 120);
+
   function renderSettings() {
     $('goalSet').textContent = fmt(S.goal);
-    $('cupPick').innerHTML = CUPS.map((c) => `
-      <button class="cup-opt ${c === S.cup ? 'on' : ''}" data-cup="${c}">
-        ${glass(100 * 0.85, 24 + c / 10)}<b class="num">${c}</b>
-      </button>`).join('');
+    $('cupInput').value = S.cup;
+    $('setGlass').style.height = glassH(S.cup) + 'px';
   }
 
   function renderAll(animate) {
@@ -739,7 +924,100 @@
   };
   $('goalLink').onclick = () => show('settings');
   $('brandHome').onclick = () => show('today');
-  $('stopGoal').onclick = () => toast('디자인 확인용: 목표 멈추기 흐름은 다음에 만들어요', false);
+  $('stopGoal').onclick = () => toast('목표를 멈추면 새 목표를 만들 때까지 기록할 수 없어요 (디자인 확인용)', false);
+
+  // ── 설정: 목표 바꾸기 (지금 목표를 멈추고 새 목표로 이어서 기록) ──
+  const posInt = (v) => Number.isInteger(+v) && +v > 0 && String(v).trim() !== '';
+  $('editGoal').onclick = () => {
+    $('goalEdit').classList.add('on');
+    $('newGoal').value = '';
+    $('todayTotal').value = total();
+    $('newGoal').focus();
+  };
+  $('cancelGoal').onclick = () => $('goalEdit').classList.remove('on');
+  $('saveGoal').onclick = () => {
+    const g = $('newGoal').value, t = $('todayTotal').value;
+    if (!posInt(g)) { $('newGoal').focus(); return; }
+    if (!(Number.isInteger(+t) && +t >= 0)) { $('todayTotal').focus(); return; }
+    S.adjust = (S.adjust || 0) + (+t - total());
+    S.goal = +g;
+    $('goalEdit').classList.remove('on');
+    renderAll(true);
+    toast(`새 목표 ${fmt(S.goal)}ml로 시작했어요`, false);
+  };
+
+  // ── 설정: 한 잔 용량 직접 입력 (바로 저장) ──
+  let savedTimer;
+  $('cupInput').oninput = (e) => { $('setGlass').style.height = glassH(+e.target.value) + 'px'; };
+  $('cupInput').onchange = (e) => {
+    if (!posInt(e.target.value)) { e.target.value = S.cup; $('setGlass').style.height = glassH(S.cup) + 'px'; return; }
+    S.cup = +e.target.value;
+    renderToday(false); renderHero(false);
+    $('cupSaved').classList.add('on');
+    clearTimeout(savedTimer);
+    savedTimer = setTimeout(() => $('cupSaved').classList.remove('on'), 1600);
+  };
+
+  // ── 첫 실행 설정 ──
+  let obStep = 0;
+  function obGo(n) {
+    obStep = n;
+    $('onboard').dataset.step = n;
+    document.querySelectorAll('.ob-step').forEach((el) => el.classList.toggle('on', +el.dataset.step === n));
+    document.querySelectorAll('#obDots i').forEach((d, i) => d.classList.toggle('on', i === n));
+    const input = { 1: $('obGoal'), 2: $('obCup') }[n];
+    if (input) setTimeout(() => input.focus(), 50);
+    if (n === 3) {
+      $('obSumGoal').textContent = fmt(+$('obGoal').value) + 'ml';
+      $('obSumCup').textContent = fmt(+$('obCup').value) + 'ml';
+    }
+  }
+  function obCheck(n) {
+    const [input, field, msg] = n === 1 ? ['obGoal', 'goalField', 'goalMsg'] : ['obCup', 'cupField', 'cupMsg'];
+    const ok = posInt($(input).value);
+    $(field).classList.toggle('bad', !ok);
+    $(msg).classList.toggle('bad', !ok);
+    if (!ok) $(msg).textContent = '1ml 이상, 숫자로 입력해 주세요';
+    return ok;
+  }
+  function obHint() {
+    const g = +$('obGoal').value, c = +$('obCup').value;
+    $('obGlass').style.height = glassH(c) + 'px';
+    $('goalMsg').textContent = 'ml 단위로 입력해 주세요';
+    $('cupMsg').textContent = posInt(c) && posInt(g) ? `하루 목표까지 약 ${Math.ceil(g / c)}잔이에요` : 'ml 단위로 입력해 주세요';
+    ['goalField', 'cupField', 'goalMsg', 'cupMsg'].forEach((id) => $(id).classList.remove('bad'));
+  }
+  $('onboard').addEventListener('click', (e) => {
+    const step = e.target.closest('[data-step-by]');
+    if (step) {
+      const input = step.parentElement.querySelector('input');
+      input.value = Math.max(0, (+input.value || 0) + +step.dataset.stepBy) || '';
+      obHint();
+    }
+    if (e.target.closest('[data-prev]')) obGo(obStep - 1);
+    if (e.target.closest('[data-next]') && (obStep === 0 || obCheck(obStep))) obGo(obStep + 1);
+  });
+  $('onboard').addEventListener('input', obHint);
+  $('onboard').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    if (obStep === 3) $('obFinish').click();
+    else if (obStep === 0 || obCheck(obStep)) obGo(obStep + 1);
+  });
+  $('obFinish').onclick = () => {
+    // 처음 시작한 사용자: 기록 없이 새싹부터
+    Object.assign(S, { goal: +$('obGoal').value, cup: +$('obCup').value, vit: 100, achievedDays: 0, today: [], past: [0, 0, 0, 0, 0, 0], adjust: 0 });
+    $('window').classList.remove('setup');
+    show('today');
+    renderAll(false);
+  };
+  $('replaySetup').onclick = () => {
+    $('obGoal').value = ''; $('obCup').value = ''; obHint();
+    $('window').classList.add('setup');
+    obGo(0);
+  };
+  // 주소 끝에 #dashboard를 붙이면 첫 실행을 건너뛰고 데모 데이터가 찬 대시보드를 바로 본다.
+  if (location.hash === '#dashboard') $('window').classList.remove('setup');
+  obGo(0);
 
   document.querySelectorAll('.nav').forEach((b) => (b.onclick = () => show(b.dataset.view)));
   function show(v) {
@@ -752,8 +1030,6 @@
     if (sw) sw.setAttribute('aria-checked', sw.getAttribute('aria-checked') !== 'true');
     const seg = e.target.closest('.seg button, .place');
     if (seg) seg.parentElement.querySelectorAll(':scope > button').forEach((b) => b.classList.toggle('on', b === seg));
-    const cup = e.target.closest('[data-cup]');
-    if (cup) { S.cup = +cup.dataset.cup; renderSettings(); renderToday(false); renderHero(false); }
   });
 
   // 라이트·다크 전환 (선택은 이 브라우저에만 기억한다)

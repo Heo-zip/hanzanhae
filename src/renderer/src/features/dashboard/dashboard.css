@@ -172,12 +172,6 @@ button {
   gap: 8px;
   padding: 0 4px 20px;
 }
-.lights i {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  display: block;
-}
 .brand {
   display: flex;
   justify-content: center;
@@ -1415,6 +1409,7 @@ body {
 .lights {
   height: 40px;
 }
+/* macOS 창 버튼이 놓이는 영역을 비워두고, 이 영역에서 창을 이동할 수 있게 한다. */
 .lights {
   -webkit-app-region: drag;
 }
@@ -1453,4 +1448,132 @@ button:disabled {
   font: inherit;
   font-size: 13px;
   font-weight: 500;
+}
+/* ── 설정: 목표 바꾸기 패널, 한 잔 용량 직접 입력 ── */
+.goal-actions {
+  display: flex;
+  gap: 8px;
+}
+.btn.line {
+  background: none;
+  border: 1.5px solid var(--line);
+  color: var(--text);
+}
+.btn.line:hover {
+  border-color: var(--brand);
+  color: var(--brand-ink);
+}
+.btn.primary {
+  background: var(--brand);
+  color: #fff;
+}
+.btn.ghost {
+  background: none;
+  color: var(--text-sub);
+}
+.btn.ghost.danger {
+  color: var(--danger);
+}
+.goal-edit {
+  display: none;
+  margin-top: 20px;
+  padding: 22px;
+  border-radius: 18px;
+  background: var(--card-sub);
+}
+.goal-edit.on {
+  display: block;
+  animation: obIn 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.goal-edit .fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.goal-edit label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-sub);
+  font-weight: 600;
+}
+.mini-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  padding: 8px 14px;
+}
+.mini-field:focus-within {
+  border-color: var(--brand);
+}
+.mini-field input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  font: inherit;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  -moz-appearance: textfield;
+}
+.mini-field input::-webkit-outer-spin-button,
+.mini-field input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.mini-field span {
+  font-size: 14px;
+  color: var(--text-sub);
+  font-weight: 600;
+}
+.goal-edit .note {
+  margin: 14px 0 18px;
+  font-size: 13px;
+  color: var(--text-sub);
+  line-height: 1.6;
+}
+.goal-edit .row-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.cup-edit {
+  display: flex;
+  align-items: flex-end;
+  gap: 24px;
+}
+.cup-edit .glass {
+  width: 48px;
+  transition: height 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.cup-edit .mini-field {
+  width: 200px;
+}
+.saved {
+  font-size: 13px;
+  color: var(--brand-ink);
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.3s;
+  align-self: center;
+}
+.saved.on {
+  opacity: 1;
+}
+
+.settings-error {
+  color: var(--danger);
+  font-size: 14px;
+}
+.settings-saved {
+  color: var(--brand-ink);
+  font-size: 14px;
 }

@@ -85,108 +85,36 @@
 
   #fx { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
 
-  .bubble {
-    position: absolute; left: 50%; top: -86px; transform: translate(-50%, 6px) scale(0.9);
-    background: var(--card); color: var(--text); font-size: 13px; font-weight: 600;
-    padding: 8px 12px; border-radius: 14px; box-shadow: var(--shadow); white-space: nowrap;
-    opacity: 0; transition: opacity 0.25s, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); z-index: 2;
-  }
-  .bubble::after {
-    content: ''; position: absolute; left: 50%; bottom: -5px; width: 10px; height: 10px;
-    background: var(--card); transform: translateX(-50%) rotate(45deg); border-radius: 2px;
-  }
-  .bubble.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
-
-  /* 카드는 화분 위에 뜨는 작은 팝오버. 기본은 화분을 클릭하면 열린다. */
-  .card {
-    position: absolute; left: 50%; bottom: calc(100% + 4px); width: 232px; z-index: 3; cursor: default;
-    background: var(--card); border-radius: 22px; padding: 16px; box-shadow: var(--shadow);
-    opacity: 0; transform: translate(-50%, 10px) scale(0.96); transform-origin: 50% 100%; pointer-events: none;
-    transition: opacity 0.25s, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-  .widget.open .card,
-  .widget[data-card='hover']:hover .card,
-  .widget[data-card='always'] .card { opacity: 1; transform: translate(-50%, 0) scale(1); pointer-events: auto; }
-  .widget.open .bubble, .widget[data-card='always'] .bubble, .widget[data-card='hover']:hover .bubble { opacity: 0; }
-  .card .row { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-sub); }
-  .card .row b { color: var(--text); font-weight: 600; }
-  .amount { display: flex; align-items: baseline; gap: 3px; margin: 4px 0 10px; font-variant-numeric: tabular-nums; }
-  .amount #amount { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
-  .amount small { font-size: 14px; font-weight: 600; color: var(--text-sub); }
-  .amount .pct { margin-left: auto; font-size: 15px; font-weight: 700; color: var(--water); }
-  .bar { height: 8px; border-radius: 99px; background: var(--card-sub); overflow: hidden; }
-  .bar i {
-    display: block; height: 100%; width: 0; border-radius: inherit;
-    background: linear-gradient(90deg, #6cc7f5, var(--water));
-    transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-  .drink {
-    margin-top: 12px; width: 100%; border: 0; border-radius: 14px; padding: 12px;
-    background: var(--water-soft); color: #1b64da; font: inherit; font-size: 15px; font-weight: 700;
-    display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;
-    transition: transform 0.12s, background 0.2s;
-  }
-  .drink:hover { background: #dcecff; }
-  .drink:active { transform: scale(0.97); }
-  .drink:disabled { opacity: 0.5; cursor: default; }
-  .drink .cup { font-weight: 600; opacity: 0.7; font-size: 13px; }
-
-  .toast {
-    position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translate(-50%, 6px);
-    background: rgba(40, 44, 52, 0.92); color: #fff; font-size: 13px; padding: 8px 8px 8px 14px;
-    border-radius: 99px; display: flex; gap: 10px; align-items: center; white-space: nowrap;
-    opacity: 0; pointer-events: none; transition: 0.25s;
-  }
-  .toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
-  .toast button { border: 0; background: rgba(255, 255, 255, 0.16); color: #fff; font: inherit; font-weight: 600; padding: 4px 10px; border-radius: 99px; cursor: pointer; }
-
   .desktop[data-wall='dark'] {
     --card: #2a2e36; --card-sub: #3a3f48; --text: #f1f3f5; --text-sub: #9aa3ad; --water-soft: #24354d;
     --shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
   }
-  .desktop[data-wall='dark'] .drink { color: #8ec5ff; }
-  .desktop[data-wall='dark'] .drink:hover { background: #2c4262; }
 
-  .sparkles span {
-    position: absolute; color: #f6c85f; font-size: 16px; pointer-events: none;
-    animation: spark 1.1s ease-out forwards; text-shadow: 0 0 8px rgba(246, 200, 95, 0.8);
+  /* ── 물뿌리개: 화분을 누르면 위로 뿅 나오고, 누르면 물을 뿌린다 ── */
+  .can {
+    position: absolute; left: 150px; top: -132px; width: 120px; height: 113px; z-index: 3;
+    border: 0; padding: 0; background: none; cursor: pointer;
+    transform-origin: 50% 50%; opacity: 0; pointer-events: none;
+    transform: translateY(24px) scale(0.2) rotate(12deg);
+    transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s;
+    filter: drop-shadow(0 8px 10px rgba(30, 60, 100, 0.18));
   }
-  @keyframes spark {
-    0% { transform: translateY(0) scale(0.3); opacity: 0; }
-    30% { opacity: 1; transform: translateY(-10px) scale(1.1); }
-    100% { transform: translateY(-36px) scale(0.6); opacity: 0; }
+  .can img { width: 100%; height: 100%; display: block; pointer-events: none; -webkit-user-drag: none; animation: bob 2.4s ease-in-out infinite; }
+  .widget.open .can { opacity: 1; pointer-events: auto; transform: none; }
+  .widget.pouring .can { transform: rotate(-28deg); transition-duration: 0.35s; }
+  .widget.pouring .can img { animation: none; }
+  @keyframes bob { 50% { transform: translateY(-4px) rotate(-2deg); } }
+  /* 기록 직후 잠깐 나타나는 되돌리기 아이콘. 글자 없이 아이콘만 둔다. */
+  .undo {
+    position: absolute; left: 196px; top: -64px; width: 36px; height: 36px; z-index: 3;
+    border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.92); cursor: pointer;
+    display: grid; place-items: center; color: #6b7684; box-shadow: 0 4px 12px rgba(30, 50, 80, 0.16);
+    opacity: 0; pointer-events: none; transform: scale(0.6); transition: opacity 0.2s, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
+  .undo svg { width: 18px; height: 18px; }
+  .undo.show { opacity: 1; pointer-events: auto; transform: none; }
+  .undo:hover { color: #2b2f36; }
 
-  /* ── 조작 패널 ── */
-  .panel { background: var(--panel); padding: 22px 20px; overflow-y: auto; border-left: 1px solid var(--line); }
-  .panel h1 { font-size: 18px; margin: 0 0 2px; }
-  .panel > p { margin: 0 0 18px; font-size: 13px; color: var(--text-sub); }
-  .group { padding: 14px 0; border-top: 1px solid var(--line); }
-  .group h2 { font-size: 13px; margin: 0 0 10px; color: var(--text-sub); font-weight: 600; }
-  .seg { display: flex; background: #f2f4f6; border-radius: 10px; padding: 3px; }
-  .seg button {
-    flex: 1; border: 0; background: none; font: inherit; font-size: 13px; padding: 7px 0; border-radius: 8px; cursor: pointer; color: #4e5968;
-  }
-  .seg button.on { background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); color: var(--text); font-weight: 600; }
-  .seg button:disabled { opacity: 0.4; cursor: default; }
-  label.field { display: flex; justify-content: space-between; align-items: center; font-size: 14px; margin: 8px 0; gap: 10px; }
-  label.field input[type='number'], label.field select {
-    width: 96px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 13px;
-  }
-  input[type='range'] { width: 100%; accent-color: var(--water); }
-  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .actions button {
-    border: 0; border-radius: 10px; padding: 10px; font: inherit; font-size: 13px; font-weight: 600;
-    background: #f2f4f6; color: #333d4b; cursor: pointer;
-  }
-  .actions button.primary { background: var(--water); color: #fff; }
-  .hint { font-size: 12px; color: var(--text-sub); margin-top: 6px; line-height: 1.5; }
-
-  @media (max-width: 760px) {
-    body { grid-template-columns: 1fr; }
-    .desktop { min-height: 540px; }
-    .panel { border-left: 0; border-top: 1px solid var(--line); }
-  }
 </style>
 </head>
 <body>
@@ -207,8 +135,7 @@
     <i style="background: linear-gradient(145deg, #3a3d46, #17181c)"></i>
   </div>
 
-  <div class="widget" id="widget" data-card="click">
-    <div class="bubble" id="bubble"></div>
+  <div class="widget" id="widget">
     <div class="plant" id="plant">
       <svg id="fx" viewBox="0 0 248 200" aria-hidden="true">
         <defs>
@@ -224,26 +151,19 @@
       </svg>
       <div class="sparkles" id="sparkles"></div>
     </div>
+    <button class="can" id="can" aria-label="물을 마셨어요. 물뿌리개로 물 주기">
+      <img src="assets/icons/watering-can.webp" alt="" />
+    </button>
+    <button class="undo" id="undoBtn" aria-label="방금 기록 되돌리기" title="되돌리기">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+    </button>
 
-    <div class="card" id="card">
-      <div class="row"><span>오늘 마신 물</span><span>목표 <b id="goalText">1,500</b>ml</span></div>
-      <div class="amount"><span id="amount">0</span><small>ml</small><span class="pct" id="pct">0%</span></div>
-      <div class="bar"><i id="barFill"></i></div>
-      <button class="drink" id="drinkBtn">
-        <svg width="18" height="20" viewBox="-8 -11 16 21" aria-hidden="true">
-          <path d="M0 -10 C4.5 -3.5 7 0 7 3.2 A7 7 0 0 1 -7 3.2 C-7 0 -4.5 -3.5 0 -10Z" fill="url(#waterGrad)" />
-          <ellipse cx="-2.6" cy="1" rx="1.6" ry="3" fill="#fff" opacity="0.8" transform="rotate(20 -2.6 1)" />
-        </svg>
-        한 잔 마셨어요 <span class="cup" id="cupText">+250ml</span>
-      </button>
-      <div class="toast" id="toast"><span id="toastText">250ml 기록했어요</span><button id="undoBtn">되돌리기</button></div>
-    </div>
   </div>
 </section>
 
 <aside class="panel">
   <h1>🌱 한잔해 · 정원 위젯</h1>
-  <p>값을 바꾸면서 상태별 모습을 확인해요. 위젯은 드래그로 옮길 수 있어요.</p>
+  <p>화분을 누르면 물뿌리개가 나오고, 물뿌리개를 누르면 한 잔이 기록돼요. 화분은 좌우로 끌어서 옮겨요.</p>
 
   <div class="group">
     <h2>성장 단계</h2>
@@ -285,9 +205,6 @@
       <select id="anchorIn"><option value="dock">Dock 위</option><option value="floor">화면 바닥</option></select>
     </label>
     <label class="field">화분 크기 <input type="range" id="sizeIn" min="0.5" max="1.2" step="0.05" value="0.8" style="width:120px" /></label>
-    <label class="field">기록 카드
-      <select id="cardIn"><option value="click">화분 클릭 시</option><option value="hover">마우스 올릴 때</option><option value="always">항상 표시</option></select>
-    </label>
     <label class="field">어두운 바탕화면 <input type="checkbox" id="wallIn" /></label>
     <label class="field">창 영역 표시 <input type="checkbox" id="boundsIn" /></label>
   </div>
@@ -386,41 +303,14 @@
     wateredTimer = setTimeout(() => { watered = false; poseVit(); }, WATERED_MS);
   }
 
-  // ── 카드 ──
-  let shown = 0;
-  function renderCard(animate) {
-    const pct = Math.min(100, Math.round((S.amount / S.goal) * 100));
-    $('goalText').textContent = fmt(S.goal);
-    $('pct').textContent = pct + '%';
-    $('barFill').style.width = pct + '%';
-    $('cupText').textContent = `+${S.cup}ml`;
+  // ── 상태 (위젯에는 숫자 카드가 없고, 패널 값만 맞춘다) ──
+  function renderStatus() {
     $('amountIn').value = S.amount;
     $('goalIn').value = S.goal;
     $('cupIn').value = S.cup;
-    const from = shown, to = S.amount;
-    shown = to;
-    if (!animate) { $('amount').textContent = fmt(to); return; }
-    const t0 = performance.now();
-    (function tick(t) {
-      const k = Math.min(1, (t - t0) / 600), e = 1 - Math.pow(1 - k, 3);
-      $('amount').textContent = fmt(Math.round(from + (to - from) * e));
-      if (k < 1) requestAnimationFrame(tick);
-    })(t0);
   }
 
-  // ── 말풍선·반짝이 ──
-  let bubbleTimer;
-  function bubble(text, ms = 2400) {
-    clearTimeout(bubbleTimer);
-    $('bubble').textContent = text;
-    $('bubble').classList.add('show');
-    bubbleTimer = setTimeout(idleBubble, ms);
-  }
-  function idleBubble() {
-    if (S.vit < 35) { $('bubble').textContent = '목이 말라요… 물 한 잔 어때요?'; $('bubble').classList.add('show'); }
-    else $('bubble').classList.remove('show');
-  }
-
+  // ── 반짝이 ──
   function sparkle() {
     const box = $('sparkles');
     for (let i = 0; i < 9; i++) {
@@ -440,34 +330,38 @@
     <ellipse cx="-2.6" cy="1" rx="1.6" ry="3" fill="#fff" opacity="0.85" transform="rotate(20 -2.6 1)"/>
     <circle cx="3" cy="5" r="0.9" fill="#fff" opacity="0.7"/>`;
 
-  function waterDrops(done) {
+  // 물뿌리개가 -28° 기울었을 때 분무구 위치(위젯 좌표). 물뿌리개 위치·크기를 바꾸면 같이 바꾼다.
+  const ROSE = { x: 172, y: -62 };
+  const POUR_MS = 1100;
+
+  function pourWater(done) {
     const fx = $('fx');
     const soilY = toPx(+currentLayer().dataset.rim) - 2;
-    [-16, 0, 16].forEach((dx, i) => {
+    for (let i = 0; i < 14; i++) {
       const g = document.createElementNS(NS, 'g');
       g.innerHTML = GLASS_DROP;
       fx.appendChild(g);
-      const x = 124 + dx;
+      const sx = ROSE.x + (Math.random() - 0.5) * 12, ex = 112 + Math.random() * 34;
       g.animate(
         [
-          { transform: `translate(${x}px, -30px) scale(1.3)`, opacity: 0 },
-          { opacity: 1, offset: 0.15 },
-          { transform: `translate(${x}px, ${soilY - 6}px) scale(1.3)`, opacity: 1, offset: 0.9 },
-          { transform: `translate(${x}px, ${soilY}px) scale(1.8, 0.4)`, opacity: 0 }
+          { transform: `translate(${sx}px, ${ROSE.y}px) scale(0.7)`, opacity: 0 },
+          { opacity: 1, offset: 0.12 },
+          { transform: `translate(${ex}px, ${soilY - 4}px) scale(1)`, opacity: 1, offset: 0.9 },
+          { transform: `translate(${ex}px, ${soilY}px) scale(1.4, 0.35)`, opacity: 0 }
         ],
-        { duration: 750, delay: i * 110, easing: 'cubic-bezier(0.55, 0, 0.85, 0.4)', fill: 'both' }
+        { duration: 520, delay: 250 + i * 70, easing: 'cubic-bezier(0.5, 0, 0.9, 0.5)', fill: 'both' }
       ).onfinish = () => g.remove();
-    });
+    }
     setTimeout(() => {
       const r = document.createElementNS(NS, 'ellipse');
-      Object.entries({ cx: 124, cy: soilY, rx: 34, ry: 6, fill: 'none', stroke: '#9fdcff', 'stroke-width': 2 })
+      Object.entries({ cx: 128, cy: soilY, rx: 34, ry: 6, fill: 'none', stroke: '#9fdcff', 'stroke-width': 2 })
         .forEach(([k, v]) => r.setAttribute(k, v));
-      r.style.transformOrigin = `124px ${soilY}px`;
+      r.style.transformOrigin = `128px ${soilY}px`;
       fx.appendChild(r);
       r.animate([{ transform: 'scale(0.3)', opacity: 0.9 }, { transform: 'scale(1.4)', opacity: 0 }], { duration: 600, easing: 'ease-out' })
         .onfinish = () => r.remove();
       done();
-    }, 900);
+    }, POUR_MS);
   }
 
   function perk() {
@@ -477,12 +371,19 @@
     );
   }
 
-  let busy = false, toastTimer;
+  let busy = false;
+  function openCan(open) {
+    if (busy) return;
+    $('widget').classList.toggle('open', open);
+  }
+
+  // 물뿌리개를 누름 = 한 잔 마셨다고 기록
   function drink() {
     if (busy) return;
     busy = true;
-    $('drinkBtn').disabled = true;
-    waterDrops(() => {
+    const w = $('widget');
+    w.classList.add('open', 'pouring');
+    pourWater(() => {
       const before = S.amount;
       S.amount += S.cup;
       S.vit = Math.min(100, S.vit + 35);
@@ -490,38 +391,34 @@
       const reached = before < S.goal && S.amount >= S.goal;
       const grew = reached && S.stage < MAX_STAGE;
       S.history.push({ cup: S.cup, grew });
-      renderCard(true);
-      if (grew) {
-        S.stage++; renderPlant(true); sparkle();
-        bubble(S.stage === MAX_STAGE ? '꽃이 피었어요! 🌸' : '목표 달성! 새잎이 돋았어요 🌿', 3000);
-      } else { flashWatered(); perk(); }
-      if (grew) return finish();
-      if (reached) { sparkle(); bubble('오늘 목표 달성! 🎉', 3000); }
-      else bubble(['고마워요!', '시원해요 💧', '조금 더 자랄 것 같아요'][Math.floor(Math.random() * 3)]);
-      finish();
+      renderStatus();
+      w.classList.remove('pouring');
+      setTimeout(() => {
+        w.classList.remove('open');
+        // 숫자나 글자 없이 식물의 변화로만 알려준다.
+        if (grew) { S.stage++; renderPlant(true); sparkle(); }
+        else { flashWatered(); perk(); if (reached) sparkle(); }
+        showUndo();
+        busy = false;
+      }, 350);
     });
-    function finish() {
-      showToast();
-      busy = false;
-      $('drinkBtn').disabled = false;
-    }
-  }
-
-  function showToast() {
-    clearTimeout(toastTimer);
-    $('toastText').textContent = `${S.cup}ml 기록했어요`;
-    $('toast').classList.add('show');
-    toastTimer = setTimeout(() => $('toast').classList.remove('show'), 4000);
   }
 
   function undo() {
     const last = S.history.pop();
-    $('toast').classList.remove('show');
     if (!last) return;
     S.amount = Math.max(0, S.amount - last.cup);
     if (last.grew) { S.stage--; renderPlant(false); }
-    renderCard(true);
-    bubble('기록을 되돌렸어요');
+    renderStatus();
+    $('undoBtn').classList.remove('show');
+    perk();
+  }
+
+  let undoTimer;
+  function showUndo() {
+    $('undoBtn').classList.add('show');
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(() => $('undoBtn').classList.remove('show'), 4000);
   }
 
   function tweenVit(to, ms) {
@@ -530,23 +427,23 @@
       const k = Math.min(1, (t - t0) / ms);
       S.vit = Math.round(from + (to - from) * k);
       poseVit();
-      if (k < 1) requestAnimationFrame(tick); else idleBubble();
+      if (k < 1) requestAnimationFrame(tick);
     })(t0);
   }
 
   // ── 조작 패널 연결 ──
-  $('drinkBtn').onclick = drink;
+  $('can').onclick = (e) => { e.stopPropagation(); drink(); };
+  $('undoBtn').onclick = (e) => { e.stopPropagation(); undo(); };
   $('actDrink').onclick = drink;
-  $('undoBtn').onclick = undo;
   $('actGoal').onclick = () => {
     S.amount = Math.max(S.amount, S.goal - S.cup);
-    renderCard(false);
+    renderStatus();
     drink();
   };
   $('actWilt').onclick = () => tweenVit(12, 1600);
   $('actReset').onclick = () => {
     Object.assign(S, INITIAL, { history: [] });
-    renderPlant(false); renderCard(false); idleBubble();
+    renderPlant(false); renderStatus();
   };
   $('stageSeg').onclick = (e) => {
     const v = +e.target.dataset.v;
@@ -556,11 +453,10 @@
     renderPlant(true);
     if (up) sparkle();
   };
-  $('vit').oninput = (e) => { S.vit = +e.target.value; poseVit(); idleBubble(); };
-  $('amountIn').onchange = (e) => { S.amount = Math.max(0, +e.target.value || 0); renderCard(true); };
-  $('goalIn').onchange = (e) => { S.goal = Math.max(100, +e.target.value || 100); renderCard(false); };
-  $('cupIn').onchange = (e) => { S.cup = +e.target.value; renderCard(false); };
-  $('cardIn').onchange = (e) => { $('widget').dataset.card = e.target.value; $('widget').classList.remove('open'); };
+  $('vit').oninput = (e) => { S.vit = +e.target.value; poseVit(); };
+  $('amountIn').onchange = (e) => { S.amount = Math.max(0, +e.target.value || 0); renderStatus(); };
+  $('goalIn').onchange = (e) => { S.goal = Math.max(100, +e.target.value || 100); renderStatus(); };
+  $('cupIn').onchange = (e) => { S.cup = +e.target.value; renderStatus(); };
   $('wallIn').onchange = (e) => ($('desktop').dataset.wall = e.target.checked ? 'dark' : 'light');
   $('boundsIn').onchange = (e) => $('widget').classList.toggle('bounds', e.target.checked);
 
@@ -592,7 +488,7 @@
     const w = $('widget');
     let start;
     w.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.card')) return;
+      if (e.target.closest('.can, .undo')) return;
       start = { cx: e.clientX, x: place.x, moved: false };
       w.setPointerCapture(e.pointerId);
     });
@@ -603,11 +499,11 @@
       if (start.moved) { place.x = start.x + dx; layout(); }
     });
     w.addEventListener('pointerup', () => {
-      if (start && !start.moved && w.dataset.card === 'click') w.classList.toggle('open');
+      if (start && !start.moved) openCan(!w.classList.contains('open'));
       start = null;
       w.classList.remove('dragging');
     });
-    document.addEventListener('pointerdown', (e) => { if (!w.contains(e.target)) w.classList.remove('open'); });
+    document.addEventListener('pointerdown', (e) => { if (!w.contains(e.target)) openCan(false); });
   })();
 
   $('anchorIn').onchange = (e) => { place.anchor = e.target.value; place.x = null; layout(); };
@@ -618,8 +514,7 @@
   clock(); setInterval(clock, 30000);
 
   renderPlant(false);
-  renderCard(false);
-  idleBubble();
+  renderStatus();
   layout();
 </script>
 </body>

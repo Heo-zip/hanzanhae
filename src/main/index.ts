@@ -2,6 +2,11 @@ import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { showGardenWindow } from './windows/gardenWindow'
+import { initializeGardenControls } from './gardenControls'
+import { initializeStorageIpc } from './storage/ipc'
+
+let dashboardWindow: BrowserWindow | null = null
 
 function createWindow(): void {
   // 앱 화면을 표시할 창을 생성한다.
@@ -15,6 +20,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     title: '한잔해',
+    // macOS 기본 창 버튼은 유지하고, 제목 표시줄을 숨겨 시안의 사이드바와 맞춘다.
     ...(process.platform === 'darwin'
       ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 24, y: 20 } }
       : {}),
@@ -25,6 +31,11 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false
     }
+  })
+
+  dashboardWindow = mainWindow
+  mainWindow.on('closed', () => {
+    if (dashboardWindow === mainWindow) dashboardWindow = null
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -40,6 +51,11 @@ function createWindow(): void {
   }
 }
 
+function showDashboard(): void {
+  if (!dashboardWindow || dashboardWindow.isDestroyed()) createWindow()
+  else dashboardWindow.show()
+}
+
 // Electron 초기화가 끝나고 창을 생성할 준비가 되면 실행한다.
 // 일부 API는 이 시점 이후에만 사용할 수 있다.
 app.whenReady().then(() => {
@@ -53,11 +69,15 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  initializeStorageIpc(() => dashboardWindow)
   createWindow()
+  showGardenWindow()
+  initializeGardenControls(showDashboard)
 
   app.on('activate', function () {
-    // macOS에서 열린 창이 없을 때 Dock 아이콘을 누르면 창을 다시 연다.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    // 정원 창이 남아 있어도 Dock 아이콘으로 닫힌 대시보드를 다시 연다.
+    showDashboard()
+    showGardenWindow()
   })
 })
 
