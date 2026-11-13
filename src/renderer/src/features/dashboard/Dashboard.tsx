@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { AppState, SettingsInput } from '../../../../shared/appState'
+import { useRecordCup } from '../water/useRecordCup'
 import logo from '../../assets/icons/logo.webp'
 import wordmark from '../../assets/icons/wordmark.webp'
 import navToday from '../../assets/icons/nav-today.webp'
@@ -89,19 +90,19 @@ function Glass({ percent, height }: { percent: number; height?: number }): React
   )
 }
 
-// 기록 기능 연결 전에는 저장된 목표와 빈 기록 상태만 보여준다.
+// 실제 물 기록과 기섭취량 조정을 함께 보여준다.
 function Today({
   onSettings,
-  goalMl,
-  cupMl,
-  todayMl
+  state,
+  refresh
 }: {
   onSettings: () => void
-  goalMl: number
-  cupMl: number
-  todayMl: number
+  state: Extract<AppState, { status: 'ready' }>
+  refresh: () => Promise<void>
 }): React.JSX.Element {
-  const preview = { goal: goalMl, cup: cupMl, today: [] as { time: string; amount: number }[] }
+  const { goalMl, cupMl, todayMl } = state
+  const { record, busy, error } = useRecordCup(state, refresh)
+  const preview = { goal: goalMl, cup: cupMl, today: state.todayRecords }
   const amount = todayMl
   const today = getDayLabels()[6].full
   const percent = Math.min(100, Math.round((amount / preview.goal) * 100))
@@ -118,7 +119,11 @@ function Today({
                 <br />
                 새싹이 기다리고 있어요
               </h1>
-              <p>목표까지 {format(Math.max(0, preview.goal - amount))}ml 남았어요.</p>
+              <p>
+                {amount >= preview.goal
+                  ? '오늘 목표를 달성했어요!'
+                  : `목표까지 ${format(preview.goal - amount)}ml 남았어요.`}
+              </p>
               <div className="grow">
                 <div className="steps" aria-hidden="true">
                   <i className="on" />
@@ -142,19 +147,26 @@ function Today({
                   <span>ml</span>
                 </div>
                 <div className="sub">
-                  목표까지 {format(Math.max(0, preview.goal - amount))}ml 남았어요
+                  {amount >= preview.goal
+                    ? '오늘 목표를 달성했어요!'
+                    : `목표까지 ${format(preview.goal - amount)}ml 남았어요`}
                 </div>
               </div>
               <div className="today-actions">
                 <button className="goal-link" onClick={onSettings}>
                   목표 <span className="num">{format(preview.goal)}</span>ml ›
                 </button>
-                <button className="drink" disabled>
+                <button className="drink" disabled={busy} onClick={() => void record()}>
                   <img src={drop} alt="" width="20" height="20" /> 한 잔 마셨어요{' '}
                   <small>+{preview.cup}ml</small>
                 </button>
               </div>
             </div>
+            {error && (
+              <p className="water-error" role="alert">
+                {error}
+              </p>
+            )}
             <div className="track" aria-label={`목표 진행률 ${percent}%`}>
               <div className="fill" style={{ width: `${percent}%` }} />
               <div className="thumb" style={{ left: `${percent}%` }}>
@@ -184,7 +196,7 @@ function Today({
             <h2>
               최근 7일 <small>점선은 하루 목표</small>
             </h2>
-            <p>물 기록 기능을 준비하고 있어요.</p>
+            <p>최근 7일 통계를 준비하고 있어요.</p>
           </div>
           <div className="card plain stretch">
             <h2>
@@ -193,16 +205,22 @@ function Today({
                 전체 취소
               </button>
             </h2>
-            <p>물 기록 기능을 준비하고 있어요.</p>
+            {preview.today.length === 0 && <p>아직 오늘의 물 기록이 없어요.</p>}
             <ul className="records">
-              {/* 원본 순서를 바꾸지 않고 최근 기록부터 보여준다. */}
-              {[...preview.today].reverse().map((record, index) => (
-                <li key={record.time}>
+              {preview.today.map((record, index) => (
+                <li key={record.id}>
                   <span className="dot">
                     <img src={drop} alt="" />
                   </span>
-                  <span className="num">{record.amount}ml</span>
-                  <span className="t num">{record.time}</span>
+                  <span className="num">{format(record.amountMl)}ml</span>
+                  <span className="t num">
+                    {new Intl.DateTimeFormat('ko-KR', {
+                      timeZone: 'Asia/Seoul',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hourCycle: 'h23'
+                    }).format(new Date(record.recordedAt))}
+                  </span>
                   {index === 0 && <button disabled>최근 한 잔 취소</button>}
                 </li>
               ))}
@@ -239,7 +257,7 @@ function History(): React.JSX.Element {
         </div>
         <div className="card plain week-cups">
           <h2>최근 7일 물컵</h2>
-          <p>물 기록과 통계 기능을 준비하고 있어요.</p>
+          <p>통계 기능을 준비하고 있어요.</p>
         </div>
         <div className="col summary">
           <Metric icon={statCups} label="하루 평균" value="—" unit="" />
@@ -584,18 +602,14 @@ function Dashboard({
         <div className="foot">
           기록은 이 Mac에만 저장돼요.
           <br />
-          로그인 없이 사용 중<div className="preview-note">물 기록 기능을 준비하고 있어요.</div>
+          로그인 없이 사용 중
+          <div className="preview-note">식물 성장과 통계 기능을 준비하고 있어요.</div>
         </div>
       </aside>
       <main>
         {view === 'today' &&
           (state.status === 'ready' ? (
-            <Today
-              onSettings={() => setView('settings')}
-              goalMl={state.goalMl}
-              cupMl={state.cupMl}
-              todayMl={state.todayMl}
-            />
+            <Today onSettings={() => setView('settings')} state={state} refresh={refresh} />
           ) : (
             <section className="view on">
               <div className="head">

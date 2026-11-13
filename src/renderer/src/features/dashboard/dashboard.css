@@ -1577,3 +1577,7 @@ button:disabled {
   color: var(--brand-ink);
   font-size: 14px;
 }
+.water-error {
+  color: var(--danger);
+  font-size: 13px;
+}

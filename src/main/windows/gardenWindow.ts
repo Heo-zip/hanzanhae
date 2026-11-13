@@ -7,6 +7,10 @@ let isQuitting = false
 
 export const GARDEN_SHORTCUT = 'CommandOrControl+Alt+Shift+H'
 
+export function getGardenWindow(): BrowserWindow | null {
+  return gardenWindow
+}
+
 app.on('before-quit', () => {
   isQuitting = true
 })
