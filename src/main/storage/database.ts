@@ -4,12 +4,15 @@ import type {
   SetupInput,
   SettingsInput,
   RecordCupInput,
-  WaterRecord
+  WaterRecord,
+  CancelWaterInput
 } from '../../shared/appState'
 
 export class AlreadyConfiguredError extends Error {}
 export class InvalidSetupError extends Error {}
 export class StaleStateError extends Error {}
+export class NoRecordsError extends Error {}
+export class TotalBelowZeroError extends Error {}
 
 function today(date: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -31,7 +34,7 @@ export class AppDatabase {
     try {
       this.db.exec('PRAGMA foreign_keys = ON')
       const version = Number(this.db.prepare('PRAGMA user_version').get()?.user_version)
-      if (version > 3) throw new Error('지원하지 않는 데이터베이스 버전')
+      if (version > 4) throw new Error('지원하지 않는 데이터베이스 버전')
       if (version === 0) {
         this.db.exec(`
           BEGIN IMMEDIATE;
@@ -62,6 +65,14 @@ export class AppDatabase {
           COMMIT;
         `)
       }
+      if (version < 4) {
+        this.db.exec(`
+          BEGIN IMMEDIATE;
+          CREATE TABLE cancel_receipts (request_id TEXT PRIMARY KEY, payload TEXT NOT NULL, cancelled_count INTEGER NOT NULL CHECK(cancelled_count > 0));
+          PRAGMA user_version = 4;
+          COMMIT;
+        `)
+      }
     } catch (error) {
       this.db.close()
       throw error
@@ -86,13 +97,17 @@ export class AppDatabase {
         this.db.prepare('SELECT COUNT(*) AS n FROM daily_adjustments').get()?.n
       )
       const records = Number(this.db.prepare('SELECT COUNT(*) AS n FROM water_records').get()?.n)
+      const cancellations = Number(
+        this.db.prepare('SELECT COUNT(*) AS n FROM cancel_receipts').get()?.n
+      )
       if (
         goalCount !== 0 ||
         plant ||
         receipts !== 0 ||
         changes !== 0 ||
         adjustments !== 0 ||
-        records !== 0
+        records !== 0 ||
+        cancellations !== 0
       )
         throw new Error('불완전한 설정 데이터')
       return { status: 'setup-required' }
@@ -115,11 +130,12 @@ export class AppDatabase {
     )
     const todayRecords: WaterRecord[] = this.db
       .prepare(
-        'SELECT id, amount_ml, recorded_at FROM water_records WHERE day = ? AND cancelled_at IS NULL ORDER BY recorded_at DESC, id DESC'
+        'SELECT id, goal_id, amount_ml, recorded_at FROM water_records WHERE day = ? AND cancelled_at IS NULL ORDER BY recorded_at DESC, id DESC'
       )
       .all(day)
       .map((record) => ({
         id: Number(record.id),
+        goalId: Number(record.goal_id),
         amountMl: Number(record.amount_ml),
         recordedAt: String(record.recorded_at)
       }))
@@ -237,6 +253,93 @@ export class AppDatabase {
       const state = this.readState()
       this.db.exec('COMMIT')
       return { state, created }
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
+  cancelWater(input: CancelWaterInput): {
+    state: AppState
+    cancelledCount: number
+    created: boolean
+  } {
+    const positive = (value: number): boolean => Number.isSafeInteger(value) && value > 0
+    if (
+      !input ||
+      typeof input.requestId !== 'string' ||
+      input.requestId.length < 1 ||
+      input.requestId.length > 128 ||
+      !positive(input.expectedGoalId) ||
+      typeof input.day !== 'string' ||
+      (input.kind === 'latest'
+        ? !positive(input.recordId)
+        : input.kind === 'today'
+          ? !Array.isArray(input.expectedRecordIds) ||
+            !input.expectedRecordIds.every(positive) ||
+            new Set(input.expectedRecordIds).size !== input.expectedRecordIds.length
+          : true)
+    )
+      throw new InvalidSetupError()
+    const payload = JSON.stringify([
+      input.kind,
+      input.expectedGoalId,
+      input.day,
+      input.kind === 'latest' ? input.recordId : input.expectedRecordIds
+    ])
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      const previous = this.db
+        .prepare('SELECT payload, cancelled_count FROM cancel_receipts WHERE request_id = ?')
+        .get(input.requestId)
+      let cancelledCount: number
+      let created = false
+      if (previous) {
+        if (previous.payload !== payload) throw new InvalidSetupError()
+        cancelledCount = Number(previous.cancelled_count)
+      } else {
+        const state = this.readState()
+        const now = this.now()
+        if (
+          state.status !== 'ready' ||
+          state.goalId !== input.expectedGoalId ||
+          state.day !== input.day ||
+          today(now) !== input.day
+        )
+          throw new StaleStateError()
+        const current = state.todayRecords.filter((record) => record.goalId === state.goalId)
+        if (current.length === 0) {
+          if (input.kind === 'today' && input.expectedRecordIds.length === 0)
+            throw new NoRecordsError()
+          throw new StaleStateError()
+        }
+        let selected: WaterRecord[]
+        if (input.kind === 'latest') {
+          if (current[0].id !== input.recordId) throw new StaleStateError()
+          selected = [current[0]]
+        } else {
+          if (
+            input.expectedRecordIds.length !== current.length ||
+            current.some((record, index) => record.id !== input.expectedRecordIds[index])
+          )
+            throw new StaleStateError()
+          selected = current
+        }
+        const amount = selected.reduce((sum, record) => sum + record.amountMl, 0)
+        if (state.todayMl - amount < 0) throw new TotalBelowZeroError()
+        const update = this.db.prepare(
+          'UPDATE water_records SET cancelled_at = ? WHERE id = ? AND cancelled_at IS NULL'
+        )
+        for (const record of selected) update.run(now.toISOString(), record.id)
+        cancelledCount = selected.length
+        this.db
+          .prepare('INSERT INTO cancel_receipts VALUES (?, ?, ?)')
+          .run(input.requestId, payload, cancelledCount)
+        created = true
+      }
+      const state = this.readState()
+      this.db.exec('COMMIT')
+      return { state, cancelledCount, created }
     } catch (error) {
       this.db.exec('ROLLBACK')
       throw error

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AppState } from '../../../../shared/appState'
 import { useRecordCup } from '../water/useRecordCup'
+import { useCancelWater } from '../water/useCancelWater'
 import stage1 from '../../assets/stage1.webp'
 import wateringCan from '../../assets/icons/watering-can.webp'
 import './garden.css'
@@ -14,21 +15,49 @@ function Garden({
 }): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false)
   const [pouring, setPouring] = useState(false)
+  const [showUndo, setShowUndo] = useState(false)
   const { record, busy, error } = useRecordCup(state, refresh)
+  const { cancel, retry, busy: cancelBusy, error: cancelError, retryable } = useCancelWater(refresh)
+  const latest =
+    state.status === 'ready'
+      ? state.todayRecords.find((item) => item.goalId === state.goalId)
+      : undefined
+
+  async function undoLatest(): Promise<void> {
+    if (state.status !== 'ready' || !latest) return
+    if (
+      await cancel({
+        kind: 'latest',
+        expectedGoalId: state.goalId,
+        day: state.day,
+        recordId: latest.id
+      })
+    )
+      setShowUndo(false)
+  }
 
   useEffect(() => {
     let timer: number | undefined
+    let undoTimer: number | undefined
     const unsubscribe = window.hanzanhae.onWaterRecorded(() => {
       window.clearTimeout(timer)
+      window.clearTimeout(undoTimer)
+      setShowUndo(false)
       setIsOpen(true)
       setPouring(true)
       timer = window.setTimeout(() => {
         setPouring(false)
         setIsOpen(false)
+        // 물뿌리개가 닫힌 뒤 되돌리기 아이콘이 겹치지 않게 나타난다.
+        undoTimer = window.setTimeout(() => {
+          setShowUndo(true)
+          undoTimer = window.setTimeout(() => setShowUndo(false), 4000)
+        }, 250)
       }, 1700)
     })
     return () => {
       window.clearTimeout(timer)
+      window.clearTimeout(undoTimer)
       unsubscribe()
     }
   }, [])
@@ -89,7 +118,7 @@ function Garden({
           className="garden-can"
           type="button"
           data-garden-interactive
-          disabled={busy || pouring || state.status !== 'ready'}
+          disabled={busy || cancelBusy || pouring || state.status !== 'ready'}
           aria-label={
             state.status === 'ready' ? '물 한 잔 기록하기' : '목표를 설정해야 물을 기록할 수 있어요'
           }
@@ -109,9 +138,43 @@ function Garden({
             ))}
           </span>
         )}
-        {error && (
-          <span className="garden-error" role="alert">
-            {error}
+        {showUndo && latest && state.status === 'ready' && (
+          <button
+            type="button"
+            className="garden-undo"
+            data-garden-interactive
+            aria-label="최근 한 잔 취소"
+            title="최근 한 잔 취소"
+            disabled={busy || cancelBusy}
+            onClick={() => void undoLatest()}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M9 14 4 9l5-5" />
+              <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+            </svg>
+          </button>
+        )}
+        {(error || cancelError) && (
+          <span className="garden-error" role="alert" data-garden-interactive>
+            {cancelError || error}
+            {retryable && (
+              <button
+                type="button"
+                className="garden-retry"
+                disabled={cancelBusy}
+                onClick={() => void retry()}
+              >
+                다시 시도
+              </button>
+            )}
           </span>
         )}
       </div>

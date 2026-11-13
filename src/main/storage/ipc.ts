@@ -7,9 +7,18 @@ import type {
   SetupInput,
   SettingsInput,
   RecordCupInput,
-  RecordCupResult
+  RecordCupResult,
+  CancelWaterInput,
+  CancelWaterResult
 } from '../../shared/appState'
-import { AlreadyConfiguredError, AppDatabase, InvalidSetupError, StaleStateError } from './database'
+import {
+  AlreadyConfiguredError,
+  AppDatabase,
+  InvalidSetupError,
+  StaleStateError,
+  NoRecordsError,
+  TotalBelowZeroError
+} from './database'
 
 let database: AppDatabase | undefined
 
@@ -110,6 +119,38 @@ export function initializeStorageIpc(
     } catch (error) {
       if (error instanceof InvalidSetupError) return { ok: false, code: 'VALIDATION_ERROR' }
       if (error instanceof StaleStateError) return { ok: false, code: 'STALE_STATE' }
+      return { ok: false, code: 'STORAGE_ERROR' }
+    }
+  })
+  ipcMain.handle('app:cancel-water', (event, input: CancelWaterInput): CancelWaterResult => {
+    const fromDashboard = event.sender === getDashboard()?.webContents
+    const fromGarden = event.sender === getGarden()?.webContents
+    if (
+      !trusted(event) ||
+      (!fromDashboard && !fromGarden) ||
+      !input ||
+      typeof input !== 'object' ||
+      (fromGarden && input.kind !== 'latest')
+    )
+      return { ok: false, code: 'VALIDATION_ERROR' }
+    try {
+      const result = getDatabase().cancelWater(input)
+      if (result.created) {
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (window.isDestroyed() || window.webContents.isDestroyed()) continue
+          try {
+            window.webContents.send('app:state-changed')
+          } catch {
+            // 취소된 저장 결과는 창 알림 오류와 구분한다.
+          }
+        }
+      }
+      return { ok: true, ...result }
+    } catch (error) {
+      if (error instanceof InvalidSetupError) return { ok: false, code: 'VALIDATION_ERROR' }
+      if (error instanceof StaleStateError) return { ok: false, code: 'STALE_STATE' }
+      if (error instanceof NoRecordsError) return { ok: false, code: 'NO_RECORDS' }
+      if (error instanceof TotalBelowZeroError) return { ok: false, code: 'TOTAL_BELOW_ZERO' }
       return { ok: false, code: 'STORAGE_ERROR' }
     }
   })

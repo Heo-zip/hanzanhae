@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { AppState, SettingsInput } from '../../../../shared/appState'
 import { useRecordCup } from '../water/useRecordCup'
+import { useCancelWater } from '../water/useCancelWater'
+import ClearTodayDialog, { type ClearTodaySnapshot } from './ClearTodayDialog'
 import logo from '../../assets/icons/logo.webp'
 import wordmark from '../../assets/icons/wordmark.webp'
 import navToday from '../../assets/icons/nav-today.webp'
@@ -102,6 +104,68 @@ function Today({
 }): React.JSX.Element {
   const { goalMl, cupMl, todayMl } = state
   const { record, busy, error } = useRecordCup(state, refresh)
+  const {
+    cancel,
+    retry,
+    busy: cancelBusy,
+    error: cancelError,
+    retryable,
+    errorCode
+  } = useCancelWater(refresh)
+  const [cancelNotice, setCancelNotice] = useState('')
+  const [clearSnapshot, setClearSnapshot] = useState<ClearTodaySnapshot | null>(null)
+  const [modalAttempted, setModalAttempted] = useState(false)
+  const currentRecords = state.todayRecords.filter((item) => item.goalId === state.goalId)
+  const latest = currentRecords[0]
+
+  async function cancelLatest(): Promise<void> {
+    if (!latest) return
+    setCancelNotice('')
+    if (
+      await cancel({
+        kind: 'latest',
+        expectedGoalId: state.goalId,
+        day: state.day,
+        recordId: latest.id
+      })
+    )
+      setCancelNotice('최근 한 잔을 취소했어요.')
+  }
+
+  function openCancelToday(): void {
+    if (currentRecords.length === 0 || retryable) return
+    setCancelNotice('')
+    setModalAttempted(false)
+    setClearSnapshot({
+      goalId: state.goalId,
+      goalMl: state.goalMl,
+      day: state.day,
+      todayMl: state.todayMl,
+      adjustmentMl:
+        state.todayMl - state.todayRecords.reduce((sum, item) => sum + item.amountMl, 0),
+      records: currentRecords.map((item) => ({ id: item.id, amountMl: item.amountMl }))
+    })
+  }
+
+  async function cancelToday(): Promise<boolean> {
+    if (!clearSnapshot) return false
+    setModalAttempted(true)
+    const success = await cancel({
+      kind: 'today',
+      expectedGoalId: clearSnapshot.goalId,
+      day: clearSnapshot.day,
+      expectedRecordIds: clearSnapshot.records.map((item) => item.id)
+    })
+    if (success) setCancelNotice('오늘 현재 목표 기록을 취소했어요.')
+    return success
+  }
+
+  async function retryCancelToday(): Promise<boolean> {
+    setModalAttempted(true)
+    const success = await retry()
+    if (success) setCancelNotice('오늘 현재 목표 기록을 취소했어요.')
+    return success
+  }
   const preview = { goal: goalMl, cup: cupMl, today: state.todayRecords }
   const amount = todayMl
   const today = getDayLabels()[6].full
@@ -156,7 +220,11 @@ function Today({
                 <button className="goal-link" onClick={onSettings}>
                   목표 <span className="num">{format(preview.goal)}</span>ml ›
                 </button>
-                <button className="drink" disabled={busy} onClick={() => void record()}>
+                <button
+                  className="drink"
+                  disabled={busy || cancelBusy}
+                  onClick={() => void record()}
+                >
                   <img src={drop} alt="" width="20" height="20" /> 한 잔 마셨어요{' '}
                   <small>+{preview.cup}ml</small>
                 </button>
@@ -201,13 +269,36 @@ function Today({
           <div className="card plain stretch">
             <h2>
               오늘 기록{' '}
-              <button className="plain-action" disabled>
+              <button
+                className="plain-action"
+                disabled={busy || cancelBusy || retryable || currentRecords.length === 0}
+                onClick={openCancelToday}
+              >
                 전체 취소
               </button>
             </h2>
+            {cancelNotice && (
+              <p className="water-status" role="status">
+                {cancelNotice}
+              </p>
+            )}
+            {cancelError && (
+              <p className="water-error" role="alert">
+                {cancelError}{' '}
+                {retryable && (
+                  <button
+                    className="cancel-retry"
+                    disabled={cancelBusy}
+                    onClick={() => void retry()}
+                  >
+                    다시 시도
+                  </button>
+                )}
+              </p>
+            )}
             {preview.today.length === 0 && <p>아직 오늘의 물 기록이 없어요.</p>}
             <ul className="records">
-              {preview.today.map((record, index) => (
+              {preview.today.map((record) => (
                 <li key={record.id}>
                   <span className="dot">
                     <img src={drop} alt="" />
@@ -221,13 +312,35 @@ function Today({
                       hourCycle: 'h23'
                     }).format(new Date(record.recordedAt))}
                   </span>
-                  {index === 0 && <button disabled>최근 한 잔 취소</button>}
+                  {record.id === latest?.id && (
+                    <button
+                      disabled={busy || cancelBusy || retryable}
+                      onClick={() => void cancelLatest()}
+                    >
+                      최근 한 잔 취소
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
           </div>
         </div>
       </div>
+      {clearSnapshot && (
+        <ClearTodayDialog
+          snapshot={clearSnapshot}
+          currentTodayMl={state.todayMl}
+          busy={cancelBusy}
+          error={cancelError}
+          errorCode={errorCode}
+          retryable={retryable}
+          attempted={modalAttempted}
+          onDismiss={() => setClearSnapshot(null)}
+          onConfirm={cancelToday}
+          onRetry={retryCancelToday}
+          onSettings={onSettings}
+        />
+      )}
     </section>
   )
 }

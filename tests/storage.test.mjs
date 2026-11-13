@@ -16,8 +16,14 @@ const source = ts.transpileModule(readFileSync(path, 'utf8'), {
 const moduleUnderTest = new Module(path)
 moduleUnderTest.filename = path
 moduleUnderTest._compile(source, path)
-const { AppDatabase, AlreadyConfiguredError, InvalidSetupError, StaleStateError } =
-  moduleUnderTest.exports
+const {
+  AppDatabase,
+  AlreadyConfiguredError,
+  InvalidSetupError,
+  StaleStateError,
+  NoRecordsError,
+  TotalBelowZeroError
+} = moduleUnderTest.exports
 const day = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Seoul',
   year: 'numeric',
@@ -235,7 +241,7 @@ test('설정 저장 실패는 이전 목표와 조정을 함께 보존한다', (
   }
 })
 
-test('버전 1 데이터는 설정을 유지하며 버전 3으로 이전한다', () => {
+test('버전 1 데이터는 설정을 유지하며 버전 4로 이전한다', () => {
   const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-migrate-'))
   const path = join(dir, 'test.sqlite')
   try {
@@ -244,7 +250,7 @@ test('버전 1 데이터는 설정을 유지하며 버전 3으로 이전한다',
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE water_records; DROP TABLE daily_adjustments; DROP TABLE settings_receipts; PRAGMA user_version = 1'
+      'DROP TABLE cancel_receipts; DROP TABLE water_records; DROP TABLE daily_adjustments; DROP TABLE settings_receipts; PRAGMA user_version = 1'
     )
     old.close()
     const migrated = new AppDatabase(path)
@@ -365,7 +371,7 @@ test('버전 2 데이터의 목표와 조정을 보존하며 물 기록 테이�
     })
     db.close()
     const old = new DatabaseSync(path)
-    old.exec('DROP TABLE water_records; PRAGMA user_version = 2')
+    old.exec('DROP TABLE cancel_receipts; DROP TABLE water_records; PRAGMA user_version = 2')
     old.close()
     const migrated = new AppDatabase(path)
     assert.deepEqual(migrated.readState(), changed)
@@ -374,6 +380,310 @@ test('버전 2 데이터의 목표와 조정을 보존하며 물 기록 테이�
       550
     )
     migrated.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('최근 한 잔 취소는 최신 기록만 대상으로 하고 재전송해도 다른 잔을 취소하지 않는다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-cancel-latest-'))
+  const path = join(dir, 'test.sqlite')
+  try {
+    const db = new AppDatabase(path)
+    const start = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 200 })
+    const base = { expectedGoalId: start.goalId, day: start.day }
+    const one = db.recordCup({ ...base, requestId: 'one' }).state
+    const two = db.recordCup({ ...base, requestId: 'two' }).state
+    assert.throws(
+      () =>
+        db.cancelWater({
+          ...base,
+          requestId: 'old',
+          kind: 'latest',
+          recordId: one.todayRecords[0].id
+        }),
+      StaleStateError
+    )
+    const input = { ...base, requestId: 'cancel', kind: 'latest', recordId: two.todayRecords[0].id }
+    const result = db.cancelWater(input)
+    assert.equal(result.cancelledCount, 1)
+    assert.equal(result.created, true)
+    assert.equal(result.state.todayMl, 200)
+    assert.deepEqual(
+      result.state.todayRecords.map((r) => r.id),
+      [one.todayRecords[0].id]
+    )
+    const three = db.recordCup({ ...base, requestId: 'three' }).state
+    const replay = db.cancelWater(input)
+    assert.equal(replay.created, false)
+    assert.deepEqual(replay.state, three)
+    assert.throws(
+      () => db.cancelWater({ ...input, recordId: three.todayRecords[0].id }),
+      InvalidSetupError
+    )
+    db.close()
+    const reopened = new AppDatabase(path)
+    assert.deepEqual(reopened.readState(), three)
+    reopened.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('오늘 전체 취소는 현재 목표 기록만 취소하고 이전 목표·다른 날짜·조정을 보존한다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-cancel-scope-'))
+  const path = join(dir, 'test.sqlite')
+  try {
+    let now = new Date('2026-11-12T14:00:00Z')
+    const db = new AppDatabase(path, () => now)
+    const a = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 250 })
+    const previousDay = db.recordCup({
+      requestId: 'yesterday',
+      expectedGoalId: a.goalId,
+      day: a.day
+    }).state.day
+    now = new Date('2026-11-13T01:00:00Z')
+    const today = db.readState().day
+    db.recordCup({ requestId: 'a1', expectedGoalId: a.goalId, day: today })
+    db.recordCup({ requestId: 'a2', expectedGoalId: a.goalId, day: today })
+    const b = db.updateSettings({
+      requestId: 'goal',
+      kind: 'goal',
+      goalMl: 2000,
+      todayMl: 700,
+      expectedTodayMl: 500,
+      expectedGoalId: a.goalId,
+      day: today
+    })
+    db.updateSettings({ requestId: 'cup', kind: 'cup', cupMl: 300 })
+    const before = db.recordCup({ requestId: 'b1', expectedGoalId: b.goalId, day: today }).state
+    assert.equal(before.todayMl, 1000)
+    const id = before.todayRecords.find((r) => r.goalId === b.goalId).id
+    const input = {
+      requestId: 'all',
+      kind: 'today',
+      expectedGoalId: b.goalId,
+      day: today,
+      expectedRecordIds: [id]
+    }
+    const result = db.cancelWater(input)
+    assert.equal(result.cancelledCount, 1)
+    assert.equal(result.state.todayMl, 700)
+    assert.equal(result.state.goalId, b.goalId)
+    assert.equal(result.state.todayRecords.length, 2)
+    assert.equal(
+      result.state.todayRecords.every((r) => r.goalId === a.goalId),
+      true
+    )
+    assert.equal(db.cancelWater(input).created, false)
+    assert.throws(
+      () => db.cancelWater({ ...input, requestId: 'none', expectedRecordIds: [] }),
+      NoRecordsError
+    )
+    const later = db.recordCup({ requestId: 'b2', expectedGoalId: b.goalId, day: today }).state
+    assert.equal(later.todayMl, 1000)
+    assert.deepEqual(db.cancelWater(input).state, later)
+    const inspector = new DatabaseSync(path)
+    assert.equal(
+      inspector
+        .prepare('SELECT COUNT(*) AS n FROM water_records WHERE day = ? AND cancelled_at IS NULL')
+        .get(previousDay).n,
+      1
+    )
+    assert.equal(
+      inspector
+        .prepare('SELECT SUM(amount_ml) AS n FROM daily_adjustments WHERE day = ?')
+        .get(today).n,
+      200
+    )
+    inspector.close()
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('전체 취소는 확인 후 기록이 바뀌면 거절하고 저장 실패 시 전체 롤백한다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-cancel-rollback-'))
+  const path = join(dir, 'test.sqlite')
+  try {
+    const db = new AppDatabase(path)
+    const state = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 250 })
+    const base = { expectedGoalId: state.goalId, day: state.day }
+    const one = db.recordCup({ ...base, requestId: 'one' }).state
+    const stale = {
+      ...base,
+      requestId: 'stale',
+      kind: 'today',
+      expectedRecordIds: one.todayRecords.map((r) => r.id)
+    }
+    const two = db.recordCup({ ...base, requestId: 'two' }).state
+    assert.throws(() => db.cancelWater(stale), StaleStateError)
+    assert.equal(db.readState().todayMl, 500)
+    const inspector = new DatabaseSync(path)
+    inspector.exec(
+      `CREATE TRIGGER fail_cancel BEFORE UPDATE OF cancelled_at ON water_records WHEN OLD.id = ${one.todayRecords[0].id} BEGIN SELECT RAISE(ABORT, 'failure'); END`
+    )
+    const input = {
+      ...base,
+      requestId: 'retry',
+      kind: 'today',
+      expectedRecordIds: two.todayRecords.map((r) => r.id)
+    }
+    assert.throws(() => db.cancelWater(input))
+    assert.deepEqual(db.readState(), two)
+    assert.equal(inspector.prepare('SELECT COUNT(*) AS n FROM cancel_receipts').get().n, 0)
+    inspector.exec('DROP TRIGGER fail_cancel')
+    inspector.exec(
+      "CREATE TRIGGER fail_receipt BEFORE INSERT ON cancel_receipts BEGIN SELECT RAISE(ABORT, 'failure'); END"
+    )
+    assert.throws(() => db.cancelWater(input))
+    assert.deepEqual(db.readState(), two)
+    assert.equal(inspector.prepare('SELECT COUNT(*) AS n FROM cancel_receipts').get().n, 0)
+    inspector.exec('DROP TRIGGER fail_receipt')
+    assert.equal(db.cancelWater(input).state.todayMl, 0)
+    inspector.close()
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('취소 후 총량이 음수면 어떤 기록도 취소하지 않는다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-cancel-negative-'))
+  const path = join(dir, 'test.sqlite')
+  try {
+    const db = new AppDatabase(path)
+    const initial = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 500 })
+    db.recordCup({ requestId: 'one', expectedGoalId: initial.goalId, day: initial.day })
+    const sql = new DatabaseSync(path)
+    sql
+      .prepare(
+        'INSERT INTO daily_adjustments (goal_id, day, amount_ml, created_at) VALUES (?, ?, ?, ?)'
+      )
+      .run(initial.goalId, initial.day, -300, '2026-11-13T00:00:00Z')
+    const before = db.readState()
+    assert.equal(before.todayMl, 200)
+    assert.throws(
+      () =>
+        db.cancelWater({
+          requestId: 'negative',
+          kind: 'latest',
+          expectedGoalId: initial.goalId,
+          day: initial.day,
+          recordId: before.todayRecords[0].id
+        }),
+      TotalBelowZeroError
+    )
+    assert.deepEqual(db.readState(), before)
+    assert.equal(sql.prepare('SELECT COUNT(*) AS n FROM cancel_receipts').get().n, 0)
+    sql.close()
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('한국 자정 이후 이전 날짜 취소 요청을 거절하고 어제 기록을 보존한다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-cancel-day-'))
+  const path = join(dir, 'test.sqlite')
+  try {
+    let now = new Date('2026-11-13T14:59:59Z')
+    const db = new AppDatabase(path, () => now)
+    const initial = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 250 })
+    const recorded = db.recordCup({
+      requestId: 'one',
+      expectedGoalId: initial.goalId,
+      day: initial.day
+    }).state
+    const input = {
+      requestId: 'cancel',
+      kind: 'latest',
+      expectedGoalId: initial.goalId,
+      day: initial.day,
+      recordId: recorded.todayRecords[0].id
+    }
+    now = new Date('2026-11-13T15:00:00Z')
+    assert.throws(() => db.cancelWater(input), StaleStateError)
+    assert.equal(db.readState().todayMl, 0)
+    const sql = new DatabaseSync(path)
+    assert.equal(
+      sql.prepare('SELECT cancelled_at FROM water_records WHERE id = ?').get(input.recordId)
+        .cancelled_at,
+      null
+    )
+    sql.close()
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('버전 3 데이터의 기록을 보존하며 취소 이력 테이블을 추가한다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-cancel-migration-'))
+  const path = join(dir, 'test.sqlite')
+  try {
+    const db = new AppDatabase(path)
+    const initial = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 250 })
+    const recorded = db.recordCup({
+      requestId: 'one',
+      expectedGoalId: initial.goalId,
+      day: initial.day
+    }).state
+    db.close()
+    const old = new DatabaseSync(path)
+    old.exec('DROP TABLE cancel_receipts; PRAGMA user_version = 3')
+    old.close()
+    const migrated = new AppDatabase(path)
+    assert.deepEqual(migrated.readState(), recorded)
+    assert.equal(
+      migrated.cancelWater({
+        requestId: 'cancel',
+        kind: 'latest',
+        expectedGoalId: initial.goalId,
+        day: initial.day,
+        recordId: recorded.todayRecords[0].id
+      }).state.todayMl,
+      0
+    )
+    migrated.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('목표가 중단되거나 다른 목표로 바뀌면 이전 목표 기록을 취소할 수 없다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-cancel-stale-goal-'))
+  const path = join(dir, 'test.sqlite')
+  try {
+    const db = new AppDatabase(path)
+    const first = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 250 })
+    const recorded = db.recordCup({
+      requestId: 'one',
+      expectedGoalId: first.goalId,
+      day: first.day
+    }).state
+    const old = {
+      kind: 'latest',
+      expectedGoalId: first.goalId,
+      day: first.day,
+      recordId: recorded.todayRecords[0].id
+    }
+    db.updateSettings({ requestId: 'stop', kind: 'stop', expectedGoalId: first.goalId })
+    assert.throws(() => db.cancelWater({ ...old, requestId: 'stopped' }), StaleStateError)
+    const next = db.updateSettings({
+      requestId: 'new',
+      kind: 'goal',
+      expectedGoalId: null,
+      day: first.day,
+      expectedTodayMl: 250,
+      goalMl: 1500,
+      todayMl: 250
+    })
+    assert.throws(() => db.cancelWater({ ...old, requestId: 'different-goal' }), StaleStateError)
+    assert.equal(db.readState().todayMl, 250)
+    assert.equal(db.readState().goalId, next.goalId)
+    db.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
