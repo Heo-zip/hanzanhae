@@ -53,8 +53,8 @@ function ClearTodayDialog({
 
   function close(): void {
     if (busy) return
+    // 닫힘 처리는 dialog의 close 이벤트(onClose) 한 곳에서만 한다.
     dialogRef.current?.close()
-    onDismiss()
   }
 
   async function submit(): Promise<void> {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { AppState, SettingsInput } from '../../../../shared/appState'
 import { useRecordCup } from '../water/useRecordCup'
 import { useCancelWater } from '../water/useCancelWater'
+import { isMlInput } from '../water/mlInput'
 import ClearTodayDialog, { type ClearTodaySnapshot } from './ClearTodayDialog'
 import logo from '../../assets/icons/logo.webp'
 import wordmark from '../../assets/icons/wordmark.webp'
@@ -27,24 +28,19 @@ const navItems: { view: View; label: string; icon: string }[] = [
 
 const format = (value: number): string => value.toLocaleString('ko-KR')
 
-function getDayLabels(): { label: string; full: string }[] {
-  // 앱의 하루 기준인 한국 시간으로 6일 전부터 오늘까지의 날짜를 표시한다.
-  const now = Date.now()
-  return Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(now - (6 - index) * 24 * 60 * 60 * 1000)
-    const full = new Intl.DateTimeFormat('ko-KR', {
-      timeZone: 'Asia/Seoul',
-      month: 'long',
-      day: 'numeric',
-      weekday: 'short'
-    }).format(date)
-    const weekday = new Intl.DateTimeFormat('ko-KR', {
-      timeZone: 'Asia/Seoul',
-      weekday: 'short'
-    }).format(date)
-    return { label: index === 6 ? '오늘' : weekday, full }
-  })
-}
+// 앱의 하루 기준인 한국 시간으로 날짜와 기록 시각을 표시한다.
+const dayFormat = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul',
+  month: 'long',
+  day: 'numeric',
+  weekday: 'short'
+})
+const timeFormat = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23'
+})
 
 // 오늘 화면과 기록 화면에서 같은 형태의 요약 수치를 재사용한다.
 function Metric({
@@ -91,7 +87,7 @@ function Today({
   state: Extract<AppState, { status: 'ready' }>
   refresh: () => Promise<void>
 }): React.JSX.Element {
-  const { goalMl, cupMl, todayMl } = state
+  const { goalMl, cupMl, todayMl, todayRecords } = state
   const { record, busy, error } = useRecordCup(state, refresh)
   const {
     cancel,
@@ -170,10 +166,8 @@ function Today({
     if (success) setCancelNotice('오늘 현재 목표 기록을 취소했어요.')
     return success
   }
-  const preview = { goal: goalMl, cup: cupMl, today: state.todayRecords }
-  const amount = todayMl
-  const today = getDayLabels()[6].full
-  const percent = Math.min(100, Math.round((amount / preview.goal) * 100))
+  const today = dayFormat.format(new Date())
+  const percent = Math.min(100, Math.round((todayMl / goalMl) * 100))
   const stageIndex = plantIndex(state.plantStage)
   const stage = stages[stageIndex]
 
@@ -185,7 +179,7 @@ function Today({
             <div className="msg">
               <div className="hi">{today}</div>
               <h1>
-                {amount >= preview.goal ? (
+                {todayMl >= goalMl ? (
                   <>
                     오늘 목표 달성!
                     <br />
@@ -196,7 +190,7 @@ function Today({
                     화분이 목말라 해요
                     <br />물 <em>한 잔</em> 어때요?
                   </>
-                ) : preview.today.length === 0 ? (
+                ) : todayRecords.length === 0 ? (
                   <>
                     화분이 오늘의
                     <br />
@@ -204,16 +198,16 @@ function Today({
                   </>
                 ) : (
                   <>
-                    오늘 <em>{preview.today.length}잔</em> 마셨어요
+                    오늘 <em>{todayRecords.length}잔</em> 마셨어요
                     <br />
                     화분이 생생해요
                   </>
                 )}
               </h1>
               <p>
-                {amount >= preview.goal
+                {todayMl >= goalMl
                   ? '오늘 목표를 달성했어요!'
-                  : `목표까지 ${format(preview.goal - amount)}ml 남았어요.`}
+                  : `목표까지 ${format(goalMl - todayMl)}ml 남았어요.`}
               </p>
               <div className="grow">
                 <div className="steps" aria-hidden="true">
@@ -243,18 +237,18 @@ function Today({
               <div>
                 <h2>오늘 마신 물</h2>
                 <div className="big num">
-                  <b>{format(amount)}</b>
+                  <b>{format(todayMl)}</b>
                   <span>ml</span>
                 </div>
                 <div className="sub">
-                  {amount >= preview.goal
+                  {todayMl >= goalMl
                     ? '오늘 목표를 달성했어요!'
-                    : `목표까지 ${format(preview.goal - amount)}ml 남았어요`}
+                    : `목표까지 ${format(goalMl - todayMl)}ml 남았어요`}
                 </div>
               </div>
               <div className="today-actions">
                 <button className="goal-link" onClick={onSettings}>
-                  목표 <span className="num">{format(preview.goal)}</span>ml ›
+                  목표 <span className="num">{format(goalMl)}</span>ml ›
                 </button>
                 <button
                   className="drink"
@@ -262,7 +256,7 @@ function Today({
                   onClick={() => void record()}
                 >
                   <img src={drop} alt="" width="20" height="20" /> 한 잔 마셨어요{' '}
-                  <small>+{preview.cup}ml</small>
+                  <small>+{cupMl}ml</small>
                 </button>
               </div>
             </div>
@@ -280,17 +274,17 @@ function Today({
             </div>
             <div className="ends">
               <span>0</span>
-              <span className="num">{format(preview.goal)}ml</span>
+              <span className="num">{format(goalMl)}ml</span>
             </div>
           </div>
           <div className="tiles">
             <Metric
               icon={statLeft}
               label="남은 양"
-              value={format(Math.max(0, preview.goal - amount))}
+              value={format(Math.max(0, goalMl - todayMl))}
               unit="ml"
             />
-            <Metric icon={statCups} label="오늘 마신 잔" value={preview.today.length} unit="잔" />
+            <Metric icon={statCups} label="오늘 마신 잔" value={todayRecords.length} unit="잔" />
             <Metric icon={statStreak} label="연속 달성" value="—" unit="" />
             <Metric icon={statVitality} label="화분 생기" value={state.plantVitality} unit="%" />
           </div>
@@ -332,22 +326,15 @@ function Today({
                 )}
               </p>
             )}
-            {preview.today.length === 0 && <p>아직 오늘의 물 기록이 없어요.</p>}
+            {todayRecords.length === 0 && <p>아직 오늘의 물 기록이 없어요.</p>}
             <ul className="records">
-              {preview.today.map((record) => (
+              {todayRecords.map((record) => (
                 <li key={record.id}>
                   <span className="dot">
                     <img src={drop} alt="" />
                   </span>
                   <span className="num">{format(record.amountMl)}ml</span>
-                  <span className="t num">
-                    {new Intl.DateTimeFormat('ko-KR', {
-                      timeZone: 'Asia/Seoul',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      hourCycle: 'h23'
-                    }).format(new Date(record.recordedAt))}
-                  </span>
+                  <span className="t num">{timeFormat.format(new Date(record.recordedAt))}</span>
                   {record.id === latest?.id && (
                     <button
                       disabled={busy || cancelBusy || retryable}
@@ -444,10 +431,6 @@ function Settings({
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
-  const positive = (value: string): boolean =>
-    /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0
-  const nonnegative = (value: string): boolean =>
-    /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) >= 0
   const goalId = state.status === 'ready' ? state.goalId : null
 
   async function save(input: SettingsInput): Promise<boolean> {
@@ -473,7 +456,7 @@ function Settings({
     return false
   }
   async function saveGoal(): Promise<void> {
-    if (!positive(goal) || !nonnegative(total)) {
+    if (!isMlInput(goal) || !isMlInput(total, true)) {
       setError('목표는 1ml 이상, 오늘 마신 양은 0ml 이상으로 입력해 주세요.')
       return
     }
@@ -493,7 +476,7 @@ function Settings({
     }
   }
   async function saveCup(): Promise<void> {
-    if (!positive(cup)) {
+    if (!isMlInput(cup)) {
       setError('한 잔 용량을 1ml 이상으로 입력해 주세요.')
       return
     }
