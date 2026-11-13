@@ -1,18 +1,24 @@
 # 내부 API 설계
 
-> 상태: 구현 전 초안. 이름·입출력·오류 코드는 제안이며 현재 preload에 공개된 함수는 없다.
+> 상태: 최초 설정·상태 조회·목표 변경·한 잔 용량 변경을 구현했다. 물 기록과 나머지 API는 아래 설계 초안이다.
+
+현재 preload는 `gardenWindow.setMousePassthrough`, `hanzanhae.getState`, `hanzanhae.completeSetup`, `hanzanhae.updateSettings`, `hanzanhae.onStateChanged`만 공개한다. 메인은 정해진 앱 화면과 메인 프레임을 검증하며, 최초 설정과 설정 변경 쓰기는 대시보드에서만 허용한다. 상태는 최초 설정 전·활성 목표·목표 없음으로 나누고 실패는 `VALIDATION_ERROR`·`ALREADY_CONFIGURED`·`STALE_STATE`·`STORAGE_ERROR`로 반환한다. 최초 설정의 같은 요청은 최초 성공 결과를, 설정 변경의 같은 요청은 현재 상태를 반환한다. 호출자는 현재 상태를 다시 조회한다. 설정 변경 API의 `kind`는 `cup`, `stop`, `goal`이며, 목표 변경은 화면에 표시한 목표 ID·한국 날짜·기존 총량이 현재와 일치할 때만 처리한다.
 
 ## 원칙
 
 React는 preload가 공개한 기능만 호출한다. 메인은 화면의 입력을 다시 검증하고 데이터 저장을 책임진다. 내부 IPC이므로 HTTP 주소나 HTTP 상태 코드를 사용하지 않는다. 원시 `ipcRenderer`나 임의 SQL 호출은 노출하지 않는다.
 
-응답 형식 제안:
+구현한 응답은 `AppResult`의 `{ ok: true, state }` 또는 `{ ok: false, code }`다. 후속 기능의 응답 형식 제안:
 
 ```ts
 type ApiResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } }
 ```
 
 대시보드에는 한국 날짜, 활성 목표 또는 없음, 오늘 총량, 남은 양, 달성 여부, 최근 취소 가능한 기록과 식물 상태를 포함한다. 목표가 없을 때 달성 여부와 남은 양의 표시 방식은 화면에서 구분한다.
+
+## 후속 설계와 구현 기능 대응
+
+아래 표는 기능 단위 설계다. 현재 목표 중단·재생성은 `updateSettings`의 `stop`·`goal`로 처리한다. 물 기록과 취소는 미구현이다.
 
 ## 메서드 초안
 
