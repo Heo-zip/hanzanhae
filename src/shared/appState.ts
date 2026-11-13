@@ -59,3 +59,21 @@ export type SettingsInput =
       goalMl: number
       todayMl: number
     }
+
+export type DailyStatistics = {
+  day: string
+  totalMl: number
+  goalMl: number | null
+  achieved: boolean
+}
+export type WaterStatistics = {
+  days: DailyStatistics[]
+  averageMl: number | null
+  achievedDays: number
+  trackedDays: number
+  bestDay: DailyStatistics | null
+  streak: number
+}
+export type StatisticsResult =
+  | { ok: true; statistics: WaterStatistics }
+  | { ok: false; code: 'VALIDATION_ERROR' | 'STORAGE_ERROR' }

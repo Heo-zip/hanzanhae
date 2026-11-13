@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('gardenWindow', {
 
 contextBridge.exposeInMainWorld('hanzanhae', {
   getState: () => ipcRenderer.invoke('app:get-state'),
+  getStatistics: () => ipcRenderer.invoke('app:get-statistics'),
   completeSetup: (input: SetupInput) => ipcRenderer.invoke('app:complete-setup', input),
   updateSettings: (input: SettingsInput) => ipcRenderer.invoke('app:update-settings', input),
   recordCup: (input: RecordCupInput) => ipcRenderer.invoke('app:record-cup', input),

@@ -917,3 +917,172 @@ test('설정 없이 생기만 남은 데이터는 새로운 사용자로 오인�
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('통계는 한국 날짜마다 마지막 목표와 취소·조정된 총량을 사용한다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-stats-'))
+  let now = new Date('2026-11-10T14:59:00Z')
+  try {
+    const db = new AppDatabase(join(dir, 'test.sqlite'), () => now)
+    let state = db.completeSetup({ requestId: 'setup', goalMl: 200, cupMl: 100 })
+    state = db.recordCup({
+      requestId: 'before-midnight',
+      expectedGoalId: state.goalId,
+      day: state.day
+    }).state
+    now = new Date('2026-11-10T15:01:00Z')
+    state = db.readState()
+    assert.equal(state.day, '2026-11-11')
+    state = db.recordCup({
+      requestId: 'morning',
+      expectedGoalId: state.goalId,
+      day: state.day
+    }).state
+    state = db.updateSettings({
+      requestId: 'new-goal',
+      kind: 'goal',
+      expectedGoalId: state.goalId,
+      expectedTodayMl: state.todayMl,
+      day: state.day,
+      goalMl: 150,
+      todayMl: 120
+    })
+    state = db.recordCup({
+      requestId: 'afternoon',
+      expectedGoalId: state.goalId,
+      day: state.day
+    }).state
+    let stats = db.readStatistics()
+    assert.deepEqual(stats.days.at(-2), {
+      day: '2026-11-10',
+      totalMl: 100,
+      goalMl: 200,
+      achieved: false
+    })
+    assert.deepEqual(stats.days.at(-1), {
+      day: '2026-11-11',
+      totalMl: 220,
+      goalMl: 150,
+      achieved: true
+    })
+    assert.equal(stats.averageMl, 160)
+    assert.equal(stats.achievedDays, 1)
+    assert.equal(stats.trackedDays, 2)
+    assert.equal(stats.streak, 1)
+    state = db.cancelWater({
+      requestId: 'cancel',
+      kind: 'latest',
+      expectedGoalId: state.goalId,
+      day: state.day,
+      recordId: state.todayRecords[0].id
+    }).state
+    stats = db.readStatistics()
+    assert.deepEqual(stats.days.at(-1), {
+      day: '2026-11-11',
+      totalMl: 120,
+      goalMl: 150,
+      achieved: false
+    })
+    assert.equal(stats.achievedDays, 0)
+    assert.equal(stats.streak, 0)
+    db.updateSettings({ requestId: 'stop', kind: 'stop', expectedGoalId: state.goalId })
+    assert.equal(db.readStatistics().days.at(-1).goalMl, 150)
+    now = new Date('2026-11-11T15:01:00Z')
+    stats = db.readStatistics()
+    assert.deepEqual(stats.days.at(-1), {
+      day: '2026-11-12',
+      totalMl: 0,
+      goalMl: null,
+      achieved: false
+    })
+    assert.equal(stats.trackedDays, 2)
+    assert.equal(stats.averageMl, 110)
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('연속 달성은 7일을 넘어 이어지고 오늘 진행 중에는 어제까지 유지된다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-streak-'))
+  let now = new Date('2026-11-01T03:00:00Z')
+  try {
+    const path = join(dir, 'test.sqlite')
+    const db = new AppDatabase(path, () => now)
+    let state = db.completeSetup({ requestId: 'setup', goalMl: 100, cupMl: 100 })
+    for (let i = 0; i < 10; i++) {
+      now = new Date(Date.UTC(2026, 10, 1 + i, 3))
+      state = db.readState()
+      state = db.recordCup({
+        requestId: `cup-${i}`,
+        expectedGoalId: state.goalId,
+        day: state.day
+      }).state
+    }
+    now = new Date('2026-11-11T03:00:00Z')
+    let stats = db.readStatistics()
+    assert.equal(stats.streak, 10)
+    assert.equal(stats.achievedDays, 6)
+    assert.equal(stats.trackedDays, 7)
+    assert.equal(stats.averageMl, 86)
+    assert.equal(stats.bestDay.day, '2026-11-10')
+    state = db.readState()
+    state = db.recordCup({ requestId: 'today', expectedGoalId: state.goalId, day: state.day }).state
+    assert.equal(db.readStatistics().streak, 11)
+    db.cancelWater({
+      requestId: 'cancel-today',
+      kind: 'latest',
+      expectedGoalId: state.goalId,
+      day: state.day,
+      recordId: state.todayRecords[0].id
+    })
+    assert.equal(db.readStatistics().streak, 10)
+    const inspector = new DatabaseSync(path)
+    inspector
+      .prepare('UPDATE water_records SET cancelled_at = ? WHERE day = ?')
+      .run(now.toISOString(), '2026-11-08')
+    assert.equal(db.readStatistics().streak, 2)
+    inspector.close()
+    db.close()
+    const reopened = new AppDatabase(path, () => now)
+    assert.equal(reopened.readStatistics().streak, 2)
+    reopened.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('목표 없는 날은 통계 분모에서 제외하고 지난 연속 달성을 끊는다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-stats-no-goal-'))
+  let now = new Date('2026-11-01T03:00:00Z')
+  try {
+    const db = new AppDatabase(join(dir, 'test.sqlite'), () => now)
+    assert.throws(() => db.readStatistics(), StaleStateError)
+    let state = db.completeSetup({ requestId: 'setup', goalMl: 100, cupMl: 100 })
+    state = db.recordCup({ requestId: 'first', expectedGoalId: state.goalId, day: state.day }).state
+    db.updateSettings({ requestId: 'stop', kind: 'stop', expectedGoalId: state.goalId })
+    now = new Date('2026-11-03T03:00:00Z')
+    state = db.readState()
+    state = db.updateSettings({
+      requestId: 'restart',
+      kind: 'goal',
+      expectedGoalId: null,
+      expectedTodayMl: state.todayMl,
+      day: state.day,
+      goalMl: 100,
+      todayMl: 0
+    })
+    let stats = db.readStatistics()
+    assert.equal(stats.days.at(-2).goalMl, null)
+    assert.equal(stats.trackedDays, 2)
+    assert.equal(stats.averageMl, 50)
+    assert.equal(stats.streak, 0)
+    state = db.recordCup({ requestId: 'today', expectedGoalId: state.goalId, day: state.day }).state
+    stats = db.readStatistics()
+    assert.equal(stats.streak, 1)
+    assert.equal(stats.achievedDays, 2)
+    assert.equal(stats.bestDay.day, state.day)
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

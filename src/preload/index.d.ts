@@ -5,7 +5,8 @@ import type {
   RecordCupInput,
   RecordCupResult,
   CancelWaterInput,
-  CancelWaterResult
+  CancelWaterResult,
+  StatisticsResult
 } from '../shared/appState'
 
 declare global {
@@ -15,6 +16,7 @@ declare global {
     }
     hanzanhae: {
       getState: () => Promise<AppResult>
+      getStatistics: () => Promise<StatisticsResult>
       completeSetup: (input: SetupInput) => Promise<AppResult>
       updateSettings: (input: SettingsInput) => Promise<AppResult>
       recordCup: (input: RecordCupInput) => Promise<RecordCupResult>

@@ -9,7 +9,8 @@ import type {
   RecordCupInput,
   RecordCupResult,
   CancelWaterInput,
-  CancelWaterResult
+  CancelWaterResult,
+  StatisticsResult
 } from '../../shared/appState'
 import {
   AlreadyConfiguredError,
@@ -51,6 +52,15 @@ export function initializeStorageIpc(
     if (!trusted(event)) return { ok: false, code: 'VALIDATION_ERROR' }
     try {
       return { ok: true, state: getDatabase().readState() }
+    } catch {
+      return { ok: false, code: 'STORAGE_ERROR' }
+    }
+  })
+  ipcMain.handle('app:get-statistics', (event): StatisticsResult => {
+    if (!trusted(event) || event.sender !== getDashboard()?.webContents)
+      return { ok: false, code: 'VALIDATION_ERROR' }
+    try {
+      return { ok: true, statistics: getDatabase().readStatistics() }
     } catch {
       return { ok: false, code: 'STORAGE_ERROR' }
     }
