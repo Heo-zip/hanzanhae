@@ -18,11 +18,27 @@ export type AppState =
       day: string
     }
 
-export type WaterRecord = { id: number; amountMl: number; recordedAt: string }
+export type WaterRecord = { id: number; goalId: number; amountMl: number; recordedAt: string }
 export type RecordCupInput = { requestId: string; expectedGoalId: number; day: string }
 export type RecordCupResult =
   | { ok: true; state: AppState; created: boolean }
   | { ok: false; code: 'VALIDATION_ERROR' | 'STALE_STATE' | 'STORAGE_ERROR' }
+
+export type CancelWaterInput =
+  | { requestId: string; kind: 'latest'; expectedGoalId: number; day: string; recordId: number }
+  | {
+      requestId: string
+      kind: 'today'
+      expectedGoalId: number
+      day: string
+      expectedRecordIds: number[]
+    }
+export type CancelWaterResult =
+  | { ok: true; state: AppState; cancelledCount: number; created: boolean }
+  | {
+      ok: false
+      code: 'VALIDATION_ERROR' | 'STALE_STATE' | 'NO_RECORDS' | 'TOTAL_BELOW_ZERO' | 'STORAGE_ERROR'
+    }
 
 export type AppResult =
   | { ok: true; state: AppState }
