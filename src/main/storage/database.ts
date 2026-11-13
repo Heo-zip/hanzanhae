@@ -17,14 +17,16 @@ export class StaleStateError extends Error {}
 export class NoRecordsError extends Error {}
 export class TotalBelowZeroError extends Error {}
 
-function today(date: Date): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(date)
-}
+// 앱의 하루 기준인 한국 날짜를 YYYY-MM-DD로 만든다.
+const seoulDay = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Seoul',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit'
+})
+const today = (date: Date): string => seoulDay.format(date)
+const positive = (value: number): boolean => Number.isSafeInteger(value) && value > 0
+const nonnegative = (value: number): boolean => Number.isSafeInteger(value) && value >= 0
 
 export class AppDatabase {
   private readonly db: DatabaseSync
@@ -323,10 +325,8 @@ export class AppDatabase {
       typeof requestId !== 'string' ||
       requestId.length < 1 ||
       requestId.length > 128 ||
-      !Number.isSafeInteger(goalMl) ||
-      goalMl <= 0 ||
-      !Number.isSafeInteger(cupMl) ||
-      cupMl <= 0
+      !positive(goalMl) ||
+      !positive(cupMl)
     )
       throw new InvalidSetupError()
     this.db.exec('BEGIN IMMEDIATE')
@@ -383,8 +383,7 @@ export class AppDatabase {
       typeof input.requestId !== 'string' ||
       input.requestId.length < 1 ||
       input.requestId.length > 128 ||
-      !Number.isSafeInteger(input.expectedGoalId) ||
-      input.expectedGoalId <= 0 ||
+      !positive(input.expectedGoalId) ||
       typeof input.day !== 'string'
     )
       throw new InvalidSetupError()
@@ -441,7 +440,6 @@ export class AppDatabase {
     cancelledCount: number
     created: boolean
   } {
-    const positive = (value: number): boolean => Number.isSafeInteger(value) && value > 0
     if (
       !input ||
       typeof input.requestId !== 'string' ||
@@ -531,8 +529,6 @@ export class AppDatabase {
       input.requestId.length > 128
     )
       throw new InvalidSetupError()
-    const positive = (n: number): boolean => Number.isSafeInteger(n) && n > 0
-    const nonnegative = (n: number): boolean => Number.isSafeInteger(n) && n >= 0
     if (
       input.kind === 'cup'
         ? !positive(input.cupMl)

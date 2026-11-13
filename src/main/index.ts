@@ -2,11 +2,17 @@ import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { getGardenWindow, showGardenWindow } from './windows/gardenWindow'
+import { getGardenWindow, isAppQuitting, showGardenWindow } from './windows/gardenWindow'
 import { initializeGardenControls } from './gardenControls'
 import { initializeStorageIpc } from './storage/ipc'
 
 let dashboardWindow: BrowserWindow | null = null
+
+// 두 번째 실행은 같은 SQLite 파일·메뉴 막대·단축키를 겹쳐 쓰지 않도록 바로 종료하고,
+// 이미 실행 중인 앱이 대시보드를 앞으로 가져온다.
+const isPrimaryInstance = app.requestSingleInstanceLock()
+if (!isPrimaryInstance) app.quit()
+app.on('second-instance', () => showDashboard())
 
 function createWindow(): void {
   // 앱 화면을 표시할 창을 생성한다.
@@ -34,6 +40,15 @@ function createWindow(): void {
   })
 
   dashboardWindow = mainWindow
+  // 창을 닫으면 숨기고 메뉴 막대·Dock 아이콘으로 다시 연다. 다시 열 때 화면을 새로 불러오지 않는다.
+  mainWindow.on('close', (event) => {
+    if (isAppQuitting()) return
+    event.preventDefault()
+    // macOS 전체 화면에서 바로 숨기면 빈 검은 화면이 남으므로 전체 화면을 끝낸 뒤 숨긴다.
+    if (!mainWindow.isFullScreen()) return mainWindow.hide()
+    mainWindow.once('leave-full-screen', () => mainWindow.hide())
+    mainWindow.setFullScreen(false)
+  })
   mainWindow.on('closed', () => {
     if (dashboardWindow === mainWindow) dashboardWindow = null
   })
@@ -52,13 +67,17 @@ function createWindow(): void {
 }
 
 function showDashboard(): void {
-  if (!dashboardWindow || dashboardWindow.isDestroyed()) createWindow()
-  else dashboardWindow.show()
+  if (!dashboardWindow || dashboardWindow.isDestroyed()) return createWindow()
+  if (dashboardWindow.isMinimized()) dashboardWindow.restore()
+  dashboardWindow.show()
+  dashboardWindow.focus()
 }
 
 // Electron 초기화가 끝나고 창을 생성할 준비가 되면 실행한다.
 // 일부 API는 이 시점 이후에만 사용할 수 있다.
 app.whenReady().then(() => {
+  if (!isPrimaryInstance) return
+
   // Windows에서 앱을 식별할 ID를 설정한다.
   electronApp.setAppUserModelId('com.heozip.hanzanhae')
 

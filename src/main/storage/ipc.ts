@@ -44,6 +44,18 @@ function trusted(event: Electron.IpcMainInvokeEvent): boolean {
   }
 }
 
+// 저장이 끝난 뒤 보내는 알림이다. 닫히는 창에 보내다 생긴 오류가 저장 결과를 실패로 바꾸지 않게 한다.
+function broadcast(...channels: string[]): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (window.isDestroyed() || window.webContents.isDestroyed()) continue
+    try {
+      for (const channel of channels) window.webContents.send(channel)
+    } catch {
+      // 다음 상태 조회에서 창이 최신 값을 다시 불러온다.
+    }
+  }
+}
+
 export function initializeStorageIpc(
   getDashboard: () => BrowserWindow | null,
   getGarden: () => BrowserWindow | null
@@ -76,8 +88,7 @@ export function initializeStorageIpc(
     }
     try {
       const state = getDatabase().completeSetup(input)
-      for (const window of BrowserWindow.getAllWindows())
-        window.webContents.send('app:state-changed')
+      broadcast('app:state-changed')
       return { ok: true, state }
     } catch (error) {
       if (error instanceof InvalidSetupError) return { ok: false, code: 'VALIDATION_ERROR' }
@@ -95,8 +106,7 @@ export function initializeStorageIpc(
       return { ok: false, code: 'VALIDATION_ERROR' }
     try {
       const state = getDatabase().updateSettings(input)
-      for (const window of BrowserWindow.getAllWindows())
-        window.webContents.send('app:state-changed')
+      broadcast('app:state-changed')
       return { ok: true, state }
     } catch (error) {
       if (error instanceof InvalidSetupError) return { ok: false, code: 'VALIDATION_ERROR' }
@@ -114,17 +124,7 @@ export function initializeStorageIpc(
       return { ok: false, code: 'VALIDATION_ERROR' }
     try {
       const result = getDatabase().recordCup(input)
-      if (result.created) {
-        for (const window of BrowserWindow.getAllWindows()) {
-          if (window.isDestroyed() || window.webContents.isDestroyed()) continue
-          try {
-            window.webContents.send('app:state-changed')
-            window.webContents.send('app:water-recorded')
-          } catch {
-            // 저장된 결과는 창이 닫히는 중 발생한 알림 오류와 구분한다.
-          }
-        }
-      }
+      if (result.created) broadcast('app:state-changed', 'app:water-recorded')
       return { ok: true, ...result }
     } catch (error) {
       if (error instanceof InvalidSetupError) return { ok: false, code: 'VALIDATION_ERROR' }
@@ -145,16 +145,7 @@ export function initializeStorageIpc(
       return { ok: false, code: 'VALIDATION_ERROR' }
     try {
       const result = getDatabase().cancelWater(input)
-      if (result.created) {
-        for (const window of BrowserWindow.getAllWindows()) {
-          if (window.isDestroyed() || window.webContents.isDestroyed()) continue
-          try {
-            window.webContents.send('app:state-changed')
-          } catch {
-            // 취소된 저장 결과는 창 알림 오류와 구분한다.
-          }
-        }
-      }
+      if (result.created) broadcast('app:state-changed')
       return { ok: true, ...result }
     } catch (error) {
       if (error instanceof InvalidSetupError) return { ok: false, code: 'VALIDATION_ERROR' }

@@ -15,6 +15,11 @@ app.on('before-quit', () => {
   isQuitting = true
 })
 
+// 메뉴의 종료·Cmd+Q처럼 앱을 끄는 중인지 알려준다. 그 외의 창 닫기는 숨기기로 처리한다.
+export function isAppQuitting(): boolean {
+  return isQuitting
+}
+
 export function hideGardenWindow(): void {
   gardenWindow?.hide()
 }
