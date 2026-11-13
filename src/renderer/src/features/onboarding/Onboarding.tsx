@@ -111,7 +111,7 @@ function Onboarding({ onComplete }: { onComplete: () => Promise<void> }): React.
           </div>
           <span style={{ width: 52 }} />
         </div>
-        <div className="ob-body">
+        <div className={`ob-body ${step === 0 ? 'ob-body-welcome' : ''}`}>
           <div className="ob-step on" key={step}>
             {step === 0 && (
               <>
@@ -197,7 +197,8 @@ function Onboarding({ onComplete }: { onComplete: () => Promise<void> }): React.
                 </div>
                 <p className="lead">
                   화분은 Dock 위에 놓아둘게요.
-                  <br />물 기록 기능을 준비하고 있어요.
+                  <br />
+                  물을 마시고 화분에 물을 주세요.
                 </p>
                 {error && (
                   <p className="field-msg bad" role="alert">

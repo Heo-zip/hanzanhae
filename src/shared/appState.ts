@@ -1,6 +1,9 @@
+export type PlantStage = 'seedling' | 'young' | 'leafy' | 'flower'
+export type PlantStatus = { plantStage: PlantStage; plantVitality: number; growthPoints: number }
+
 export type AppState =
   | { status: 'setup-required' }
-  | {
+  | ({
       status: 'ready'
       goalId: number
       goalMl: number
@@ -8,15 +11,14 @@ export type AppState =
       todayMl: number
       todayRecords: WaterRecord[]
       day: string
-      plantStage: 'seedling'
-    }
-  | {
+    } & PlantStatus)
+  | ({
       status: 'goal-stopped'
       cupMl: number
       todayMl: number
       todayRecords: WaterRecord[]
       day: string
-    }
+    } & PlantStatus)
 
 export type WaterRecord = { id: number; goalId: number; amountMl: number; recordedAt: string }
 export type RecordCupInput = { requestId: string; expectedGoalId: number; day: string }

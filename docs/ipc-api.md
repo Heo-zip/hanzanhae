@@ -1,6 +1,6 @@
 # 내부 API 설계
 
-> 상태: 최초 설정·상태 조회·목표 변경·한 잔 용량 변경과 물 한 잔 기록과 취소를 구현했다. 성장·통계 API는 아래 설계 초안이다.
+> 상태: 최초 설정·상태 조회·목표 변경·한 잔 용량 변경과 물 한 잔 기록과 취소를 구현했다. 생기·성장은 기존 상태 조회와 기록·취소 API에 포함되며 통계 API는 아래 설계 초안이다.
 
 현재 preload는 `gardenWindow.setMousePassthrough`, `hanzanhae.getState`, `hanzanhae.completeSetup`, `hanzanhae.updateSettings`, `hanzanhae.recordCup`, `hanzanhae.cancelWater`, `hanzanhae.onStateChanged`, `hanzanhae.onWaterRecorded`를 공개한다. 메인은 정해진 앱 화면과 메인 프레임을 검증하며, 최초 설정과 설정 변경 쓰기는 대시보드에서만 허용한다. 상태는 최초 설정 전·활성 목표·목표 없음으로 나누고 실패는 `VALIDATION_ERROR`·`ALREADY_CONFIGURED`·`STALE_STATE`·`STORAGE_ERROR`로 반환한다. 최초 설정의 같은 요청은 최초 성공 결과를, 설정 변경의 같은 요청은 현재 상태를 반환한다. 호출자는 현재 상태를 다시 조회한다. 설정 변경 API의 `kind`는 `cup`, `stop`, `goal`이며, 목표 변경은 화면에 표시한 목표 ID·한국 날짜·기존 총량이 현재와 일치할 때만 처리한다.
 
@@ -18,7 +18,7 @@ type ApiResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; 
 
 ## 후속 설계와 구현 기능 대응
 
-아래 표는 기능 단위 설계다. 현재 목표 중단·재생성은 `updateSettings`의 `stop`·`goal`로 처리한다. 물 기록은 `recordCup`, 취소는 `cancelWater`의 `latest`·`today`로 구현했다. 성장 취소는 미구현이다.
+아래 표는 기능 단위 설계다. 현재 목표 중단·재생성은 `updateSettings`의 `stop`·`goal`로 처리한다. 물 기록은 `recordCup`, 취소는 `cancelWater`의 `latest`·`today`로 구현했다. 상태에는 식물 단계·생기·성장점이 포함되고 물 기록 취소 시 해당 성장도 합계에서 제외된다.
 
 ## 메서드 초안
 
@@ -47,7 +47,7 @@ type ApiResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; 
 - 같은 ID와 같은 입력의 재요청은 저장된 성공 결과를 반환하고 다시 저장하지 않는다. 같은 ID에 다른 입력을 쓰면 충돌 오류다. 결과는 최초 처리 당시 상태일 수 있으므로 필요하면 대시보드를 다시 조회한다.
 - 앱 재시작 후 미완료 요청의 자동 재시도는 MVP에 포함하지 않는다. 화면은 현재 상태를 다시 읽고 사용자가 판단한다.
 - 기록·취소·목표 재생성 요청은 화면이 본 한국 날짜 `expectedDateKst`를 보낸다. 메인은 현재 한국 날짜를 직접 계산해 다르면 거절한다. 입력된 날짜를 저장 시각의 기준으로 신뢰하지 않는다.
-- 물 기록·요청 ID와 취소 시각·취소 요청 결과는 각각 같은 트랜잭션으로 저장한다. 성장·생기를 구현할 때는 연관 변경도 같은 트랜잭션으로 처리한다.
+- 물 기록·요청 ID와 취소 시각·취소 요청 결과는 각각 같은 트랜잭션으로 저장한다. 연관 성장·생기 변경도 같은 트랜잭션으로 처리한다.
 
 ## 대시보드와 창 사이 동기화
 

@@ -1,7 +1,7 @@
 import { useRef } from 'react'
-import type { CancelWaterResult } from '../../../../shared/appState'
+import type { CancelWaterResult, PlantStage } from '../../../../shared/appState'
 import drop from '../../assets/icons/drop.webp'
-import stage1 from '../../assets/stage1.webp'
+import { plants, plantIndex } from '../plant/plantVisual'
 
 export type ClearTodaySnapshot = {
   goalId: number
@@ -17,6 +17,7 @@ const format = (value: number): string => value.toLocaleString('ko-KR')
 
 function ClearTodayDialog({
   snapshot,
+  plantStage,
   currentTodayMl,
   busy,
   error,
@@ -29,6 +30,7 @@ function ClearTodayDialog({
   onSettings
 }: {
   snapshot: ClearTodaySnapshot
+  plantStage: PlantStage
   currentTodayMl: number
   busy: boolean
   error: string
@@ -76,7 +78,7 @@ function ClearTodayDialog({
     >
       <div className="cf-body">
         <div className="cf-art">
-          <img src={stage1} alt="" />
+          <img src={plants[plantIndex(plantStage)].image} alt="" />
         </div>
         <h3 id="clear-title">
           {blocked ? '지금은 전체 취소할 수 없어요' : '오늘 기록을 모두 취소할까요?'}
@@ -91,8 +93,7 @@ function ClearTodayDialog({
           ) : (
             <>
               지금 목표로 오늘 기록한 물을
-              <br />
-              되돌려요.
+              <br />그 물로 자란 만큼을 함께 되돌려요.
             </>
           )}
         </p>

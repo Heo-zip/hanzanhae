@@ -5,7 +5,8 @@ import type {
   SettingsInput,
   RecordCupInput,
   WaterRecord,
-  CancelWaterInput
+  CancelWaterInput,
+  PlantStatus
 } from '../../shared/appState'
 
 export class AlreadyConfiguredError extends Error {}
@@ -34,7 +35,7 @@ export class AppDatabase {
     try {
       this.db.exec('PRAGMA foreign_keys = ON')
       const version = Number(this.db.prepare('PRAGMA user_version').get()?.user_version)
-      if (version > 4) throw new Error('지원하지 않는 데이터베이스 버전')
+      if (version > 5) throw new Error('지원하지 않는 데이터베이스 버전')
       if (version === 0) {
         this.db.exec(`
           BEGIN IMMEDIATE;
@@ -73,10 +74,73 @@ export class AppDatabase {
           COMMIT;
         `)
       }
+      if (version < 5) {
+        this.db.exec(`
+          BEGIN IMMEDIATE;
+          CREATE TABLE growth_events (water_record_id INTEGER PRIMARY KEY REFERENCES water_records(id), points INTEGER NOT NULL CHECK(points > 0));
+          CREATE TABLE plant_vitality (id INTEGER PRIMARY KEY CHECK(id = 1), value REAL NOT NULL CHECK(value >= 20 AND value <= 100), updated_at TEXT NOT NULL);
+        `)
+        this.db
+          .prepare('INSERT INTO plant_vitality SELECT id, 80, ? FROM plant_state')
+          .run(this.now().toISOString())
+        this.db.exec('PRAGMA user_version = 5; COMMIT;')
+      }
+      // 마지막 저장 이후는 앱이 꺼져 있던 시간으로 보수적으로 계산한다.
+      this.settleVitality('offline')
     } catch (error) {
       this.db.close()
       throw error
     }
+  }
+
+  private vitalityAt(value: number, updatedAt: string, mode: 'online' | 'offline'): number {
+    const elapsed = Math.max(0, this.now().getTime() - Date.parse(updatedAt))
+    if (!Number.isFinite(elapsed) || !Number.isFinite(value)) throw new Error('유효하지 않은 생기')
+    const hourly = mode === 'online' ? 2 : 0.25
+    return Math.max(20, Math.min(100, value - (elapsed / 3_600_000) * hourly))
+  }
+
+  private settleVitality(mode: 'online' | 'offline'): void {
+    const row = this.db.prepare('SELECT value, updated_at FROM plant_vitality WHERE id = 1').get()
+    if (!row) return
+    const value = this.vitalityAt(Number(row.value), String(row.updated_at), mode)
+    // 시계가 뒤로 움직여도 이전 시각을 보존해 같은 시간을 중복 계산하지 않는다.
+    const timestamp = new Date(Math.max(this.now().getTime(), Date.parse(String(row.updated_at))))
+    this.db
+      .prepare('UPDATE plant_vitality SET value = ?, updated_at = ? WHERE id = 1')
+      .run(value, timestamp.toISOString())
+  }
+
+  checkpointPlant(): void {
+    this.settleVitality('online')
+  }
+
+  private readPlant(): PlantStatus {
+    const row = this.db.prepare('SELECT value, updated_at FROM plant_vitality WHERE id = 1').get()
+    if (!row) throw new Error('식물 생기 데이터가 없어요')
+    const vitality = this.vitalityAt(Number(row.value), String(row.updated_at), 'online')
+    const growthPoints = Number(
+      this.db
+        .prepare(
+          `
+      SELECT COALESCE(SUM(g.points), 0) AS total
+      FROM growth_events g JOIN water_records w ON w.id = g.water_record_id
+      WHERE w.cancelled_at IS NULL
+    `
+        )
+        .get()?.total
+    )
+    if (!Number.isSafeInteger(growthPoints) || growthPoints < 0)
+      throw new Error('유효하지 않은 성장량')
+    const plantStage =
+      growthPoints >= 14000
+        ? 'flower'
+        : growthPoints >= 7000
+          ? 'leafy'
+          : growthPoints >= 3000
+            ? 'young'
+            : 'seedling'
+    return { plantStage, plantVitality: Math.round(vitality), growthPoints }
   }
 
   readState(): AppState {
@@ -100,6 +164,8 @@ export class AppDatabase {
       const cancellations = Number(
         this.db.prepare('SELECT COUNT(*) AS n FROM cancel_receipts').get()?.n
       )
+      const growth = Number(this.db.prepare('SELECT COUNT(*) AS n FROM growth_events').get()?.n)
+      const vitality = Number(this.db.prepare('SELECT COUNT(*) AS n FROM plant_vitality').get()?.n)
       if (
         goalCount !== 0 ||
         plant ||
@@ -107,7 +173,9 @@ export class AppDatabase {
         changes !== 0 ||
         adjustments !== 0 ||
         records !== 0 ||
-        cancellations !== 0
+        cancellations !== 0 ||
+        growth !== 0 ||
+        vitality !== 0
       )
         throw new Error('불완전한 설정 데이터')
       return { status: 'setup-required' }
@@ -141,7 +209,8 @@ export class AppDatabase {
       }))
     const todayMl = adjustment + todayRecords.reduce((total, record) => total + record.amountMl, 0)
     if (!Number.isSafeInteger(todayMl) || todayMl < 0) throw new Error('유효하지 않은 오늘 총량')
-    if (!goal) return { status: 'goal-stopped', cupMl, todayMl, todayRecords, day }
+    const plantStatus = this.readPlant()
+    if (!goal) return { status: 'goal-stopped', cupMl, todayMl, todayRecords, day, ...plantStatus }
     const goalMl = Number(goal.target_ml)
     if (!Number.isSafeInteger(goalMl) || goalMl <= 0) throw new Error('유효하지 않은 목표')
     return {
@@ -152,7 +221,7 @@ export class AppDatabase {
       todayMl,
       todayRecords,
       day,
-      plantStage: 'seedling'
+      ...plantStatus
     }
   }
 
@@ -184,6 +253,9 @@ export class AppDatabase {
           .run(goalMl, this.now().toISOString())
         this.db.prepare("INSERT INTO plant_state VALUES (1, 'seedling')").run()
         this.db
+          .prepare('INSERT INTO plant_vitality VALUES (1, 80, ?)')
+          .run(this.now().toISOString())
+        this.db
           .prepare('INSERT INTO mutation_receipts VALUES (?, ?, ?)')
           .run(requestId, goalMl, cupMl)
       }
@@ -200,7 +272,9 @@ export class AppDatabase {
             todayMl: 0,
             todayRecords: [],
             day: today(this.now()),
-            plantStage: 'seedling'
+            plantStage: 'seedling',
+            plantVitality: 80,
+            growthPoints: 0
           }
         : currentState
       this.db.exec('COMMIT')
@@ -243,11 +317,22 @@ export class AppDatabase {
         )
           throw new StaleStateError()
         if (!Number.isSafeInteger(state.todayMl + state.cupMl)) throw new InvalidSetupError()
-        this.db
+        const inserted = this.db
           .prepare(
             'INSERT INTO water_records (request_id, goal_id, amount_ml, recorded_at, day) VALUES (?, ?, ?, ?, ?)'
           )
           .run(input.requestId, state.goalId, state.cupMl, now.toISOString(), actualDay)
+        const after = state.todayMl + state.cupMl
+        const reached = state.todayMl < state.goalMl && after >= state.goalMl
+        const extraMl = Math.max(0, after - Math.max(state.todayMl, state.goalMl))
+        const extraPoints = Math.min(1_000_000, Math.round((extraMl / state.goalMl) * 1000))
+        const points = (reached ? 1000 : 0) + extraPoints
+        if (points > 0)
+          this.db
+            .prepare('INSERT INTO growth_events VALUES (?, ?)')
+            .run(inserted.lastInsertRowid, points)
+        this.settleVitality('online')
+        this.db.prepare('UPDATE plant_vitality SET value = MIN(100, value + 15) WHERE id = 1').run()
         created = true
       }
       const state = this.readState()
@@ -424,6 +509,10 @@ export class AppDatabase {
   }
 
   close(): void {
-    this.db.close()
+    try {
+      this.checkpointPlant()
+    } finally {
+      this.db.close()
+    }
   }
 }
