@@ -722,6 +722,11 @@ main {
 .chart .tip.show {
   opacity: 1;
 }
+.chart .tip {
+  width: max-content;
+  max-width: 100%;
+  white-space: normal;
+}
 
 /* ── 기록 ── */
 .hist-grid {
@@ -1746,4 +1751,18 @@ button:disabled {
   .confirm[open] {
     animation: none;
   }
+}
+
+/* 통계 분모와 키보드 차트 탐색을 안내한다. */
+.stats-note {
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.chart g:focus-visible {
+  outline: none;
+}
+.chart g:focus-visible > rect:first-child {
+  stroke: var(--brand);
+  stroke-width: 1.5;
 }

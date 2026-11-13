@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
-import type { AppState, SettingsInput } from '../../../../shared/appState'
+import type { AppState, SettingsInput, WaterStatistics } from '../../../../shared/appState'
 import { useRecordCup } from '../water/useRecordCup'
 import { useCancelWater } from '../water/useCancelWater'
 import { isMlInput } from '../water/mlInput'
 import ClearTodayDialog, { type ClearTodaySnapshot } from './ClearTodayDialog'
+import { useWaterStatistics } from '../statistics/useWaterStatistics'
+import { WeekChart, WeekCups } from '../statistics/WaterStatistics'
+import { dayLabel } from '../statistics/dateLabels'
 import logo from '../../assets/icons/logo.webp'
 import wordmark from '../../assets/icons/wordmark.webp'
 import navToday from '../../assets/icons/nav-today.webp'
@@ -81,11 +84,17 @@ function Glass({ percent, height }: { percent: number; height?: number }): React
 function Today({
   onSettings,
   state,
-  refresh
+  refresh,
+  statistics,
+  statisticsError,
+  refreshStatistics
 }: {
   onSettings: () => void
   state: Extract<AppState, { status: 'ready' }>
   refresh: () => Promise<void>
+  statistics: WaterStatistics | null
+  statisticsError: boolean
+  refreshStatistics: () => void
 }): React.JSX.Element {
   const { goalMl, cupMl, todayMl, todayRecords } = state
   const { record, busy, error } = useRecordCup(state, refresh)
@@ -285,7 +294,12 @@ function Today({
               unit="ml"
             />
             <Metric icon={statCups} label="오늘 마신 잔" value={todayRecords.length} unit="잔" />
-            <Metric icon={statStreak} label="연속 달성" value="—" unit="" />
+            <Metric
+              icon={statStreak}
+              label="연속 달성"
+              value={statistics?.streak ?? '—'}
+              unit={statistics ? '일' : ''}
+            />
             <Metric icon={statVitality} label="화분 생기" value={state.plantVitality} unit="%" />
           </div>
         </div>
@@ -294,7 +308,11 @@ function Today({
             <h2>
               최근 7일 <small>점선은 하루 목표</small>
             </h2>
-            <p>최근 7일 통계를 준비하고 있어요.</p>
+            {statistics ? (
+              <WeekChart days={statistics.days} />
+            ) : (
+              <StatisticsStatus error={statisticsError} retry={refreshStatistics} />
+            )}
           </div>
           <div className="card plain stretch">
             <h2>
@@ -369,8 +387,36 @@ function Today({
   )
 }
 
-// 저장된 기록이 없는 동안 성장 여정과 통계의 준비 상태를 표시한다.
-function History({ state }: { state: ConfiguredState }): React.JSX.Element {
+function StatisticsStatus({
+  error,
+  retry
+}: {
+  error: boolean
+  retry: () => void
+}): React.JSX.Element {
+  return error ? (
+    <p role="alert">
+      통계를 불러오지 못했어요.{' '}
+      <button className="cancel-retry" onClick={retry}>
+        다시 시도
+      </button>
+    </p>
+  ) : (
+    <p role="status">통계를 불러오고 있어요.</p>
+  )
+}
+
+function History({
+  state,
+  statistics,
+  statisticsError,
+  refreshStatistics
+}: {
+  state: ConfiguredState
+  statistics: WaterStatistics | null
+  statisticsError: boolean
+  refreshStatistics: () => void
+}): React.JSX.Element {
   const current = plantIndex(state.plantStage)
   return (
     <section className="view on" aria-label="기록">
@@ -397,13 +443,44 @@ function History({ state }: { state: ConfiguredState }): React.JSX.Element {
           </div>
         </div>
         <div className="card plain week-cups">
-          <h2>최근 7일 물컵</h2>
-          <p>통계 기능을 준비하고 있어요.</p>
+          <h2>
+            최근 7일 물컵 <small>컵이 가득 차면 그날 목표 달성</small>
+          </h2>
+          {statistics ? (
+            <>
+              <WeekCups days={statistics.days} />
+              <p className="stats-note">평균과 달성 횟수는 목표가 있던 날을 기준으로 해요.</p>
+            </>
+          ) : (
+            <StatisticsStatus error={statisticsError} retry={refreshStatistics} />
+          )}
         </div>
         <div className="col summary">
-          <Metric icon={statCups} label="하루 평균" value="—" unit="" />
-          <Metric icon={statStreak} label="목표 달성" value="—" unit="" />
-          <Metric icon={statLeft} label="가장 많이 마신 날" value="—" unit="" />
+          <Metric
+            icon={statCups}
+            label="하루 평균"
+            value={statistics?.averageMl != null ? format(statistics.averageMl) : '—'}
+            unit={statistics?.averageMl != null ? 'ml' : ''}
+          />
+          <Metric
+            icon={statStreak}
+            label="목표 달성"
+            value={statistics ? statistics.achievedDays : '—'}
+            unit={statistics ? `/ ${statistics.trackedDays}일` : ''}
+          />
+          <Metric
+            icon={statLeft}
+            label="가장 많이 마신 날"
+            value={
+              statistics?.bestDay
+                ? dayLabel(
+                    statistics.bestDay.day,
+                    statistics.bestDay.day === statistics.days[6].day
+                  )
+                : '—'
+            }
+            unit={statistics?.bestDay ? `${format(statistics.bestDay.totalMl)}ml` : ''}
+          />
         </div>
       </div>
     </section>
@@ -715,6 +792,7 @@ function Dashboard({
 }): React.JSX.Element {
   // 별도의 페이지 이동 없이 선택한 메뉴에 맞는 화면만 렌더링한다.
   const [view, setView] = useState<View>('today')
+  const { statistics, error: statisticsError, refresh: refreshStatistics } = useWaterStatistics()
 
   return (
     <div className="window">
@@ -739,13 +817,20 @@ function Dashboard({
         <div className="foot">
           기록은 이 Mac에만 저장돼요.
           <br />
-          로그인 없이 사용 중<div className="preview-note">통계 기능을 준비하고 있어요.</div>
+          로그인 없이 사용 중
         </div>
       </aside>
       <main>
         {view === 'today' &&
           (state.status === 'ready' ? (
-            <Today onSettings={() => setView('settings')} state={state} refresh={refresh} />
+            <Today
+              onSettings={() => setView('settings')}
+              state={state}
+              refresh={refresh}
+              statistics={statistics}
+              statisticsError={statisticsError}
+              refreshStatistics={refreshStatistics}
+            />
           ) : (
             <section className="view on">
               <div className="head">
@@ -757,7 +842,14 @@ function Dashboard({
               </button>
             </section>
           ))}
-        {view === 'history' && <History state={state} />}
+        {view === 'history' && (
+          <History
+            state={state}
+            statistics={statistics}
+            statisticsError={statisticsError}
+            refreshStatistics={refreshStatistics}
+          />
+        )}
         {view === 'settings' && <Settings state={state} refresh={refresh} />}
       </main>
     </div>

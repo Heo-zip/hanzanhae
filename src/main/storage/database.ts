@@ -6,7 +6,9 @@ import type {
   RecordCupInput,
   WaterRecord,
   CancelWaterInput,
-  PlantStatus
+  PlantStatus,
+  WaterStatistics,
+  DailyStatistics
 } from '../../shared/appState'
 
 export class AlreadyConfiguredError extends Error {}
@@ -224,6 +226,96 @@ export class AppDatabase {
       todayRecords,
       day,
       ...plantStatus
+    }
+  }
+
+  readStatistics(): WaterStatistics {
+    this.db.exec('BEGIN')
+    try {
+      const statistics = this.calculateStatistics()
+      this.db.exec('COMMIT')
+      return statistics
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
+  private calculateStatistics(): WaterStatistics {
+    if (this.readState().status === 'setup-required') throw new StaleStateError()
+    const currentDay = today(this.now())
+    const goals = this.db
+      .prepare(
+        'SELECT id, target_ml, started_at, stopped_at FROM goal_sessions ORDER BY started_at DESC, id DESC'
+      )
+      .all()
+      .map((row) => {
+        const target = Number(row.target_ml)
+        const start = new Date(String(row.started_at))
+        const end = row.stopped_at === null ? null : new Date(String(row.stopped_at))
+        if (
+          !Number.isSafeInteger(target) ||
+          target <= 0 ||
+          !Number.isFinite(start.getTime()) ||
+          (end && !Number.isFinite(end.getTime()))
+        )
+          throw new Error('유효하지 않은 목표 이력')
+        return { target, start: today(start), end: end ? today(end) : null }
+      })
+    const totals = new Map<string, number>()
+    const rows = this.db
+      .prepare(
+        `
+      SELECT day, SUM(amount_ml) AS total FROM (
+        SELECT day, amount_ml FROM water_records WHERE cancelled_at IS NULL
+        UNION ALL
+        SELECT day, amount_ml FROM daily_adjustments
+      ) GROUP BY day
+    `
+      )
+      .all()
+    for (const row of rows) {
+      const total = Number(row.total)
+      if (!Number.isSafeInteger(total) || total < 0) throw new Error('유효하지 않은 통계 총량')
+      totals.set(String(row.day), total)
+    }
+    const offset = (day: string, amount: number): string => {
+      const date = new Date(`${day}T00:00:00.000Z`)
+      date.setUTCDate(date.getUTCDate() + amount)
+      return date.toISOString().slice(0, 10)
+    }
+    const daily = (day: string): DailyStatistics => {
+      const goal = goals.find((item) => item.start <= day && (item.end === null || item.end >= day))
+      const totalMl = totals.get(day) ?? 0
+      return {
+        day,
+        totalMl,
+        goalMl: goal?.target ?? null,
+        achieved: goal ? totalMl >= goal.target : false
+      }
+    }
+    const days = Array.from({ length: 7 }, (_, index) => daily(offset(currentDay, index - 6)))
+    const tracked = days.filter((day) => day.goalMl !== null)
+    const averageMl = tracked.length
+      ? Math.round(tracked.reduce((sum, day) => sum + day.totalMl / tracked.length, 0))
+      : null
+    const bestDay = days.reduce<DailyStatistics | null>(
+      (best, day) => (day.totalMl > 0 && (!best || day.totalMl >= best.totalMl) ? day : best),
+      null
+    )
+    let cursor = daily(currentDay).achieved ? currentDay : offset(currentDay, -1)
+    let streak = 0
+    while (daily(cursor).achieved) {
+      streak++
+      cursor = offset(cursor, -1)
+    }
+    return {
+      days,
+      averageMl,
+      achievedDays: tracked.filter((day) => day.achieved).length,
+      trackedDays: tracked.length,
+      bestDay,
+      streak
     }
   }
 

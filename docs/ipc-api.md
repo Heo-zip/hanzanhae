@@ -1,8 +1,8 @@
 # 내부 API 설계
 
-> 상태: 최초 설정·상태 조회·목표 변경·한 잔 용량 변경과 물 한 잔 기록과 취소를 구현했다. 생기·성장은 기존 상태 조회와 기록·취소 API에 포함되며 통계 API는 아래 설계 초안이다.
+> 상태: 최초 설정·상태 조회·목표 변경·한 잔 용량 변경과 물 한 잔 기록과 취소를 구현했다. 생기·성장은 기존 상태 조회와 기록·취소 API에 포함되며 통계는 `getStatistics`로 조회한다.
 
-현재 preload는 `gardenWindow.setMousePassthrough`, `hanzanhae.getState`, `hanzanhae.completeSetup`, `hanzanhae.updateSettings`, `hanzanhae.recordCup`, `hanzanhae.cancelWater`, `hanzanhae.onStateChanged`, `hanzanhae.onWaterRecorded`를 공개한다. 메인은 정해진 앱 화면과 메인 프레임을 검증하며, 최초 설정과 설정 변경 쓰기는 대시보드에서만 허용한다. 상태는 최초 설정 전·활성 목표·목표 없음으로 나누고 실패는 `VALIDATION_ERROR`·`ALREADY_CONFIGURED`·`STALE_STATE`·`STORAGE_ERROR`로 반환한다. 최초 설정의 같은 요청은 최초 성공 결과를, 설정 변경의 같은 요청은 현재 상태를 반환한다. 호출자는 현재 상태를 다시 조회한다. 설정 변경 API의 `kind`는 `cup`, `stop`, `goal`이며, 목표 변경은 화면에 표시한 목표 ID·한국 날짜·기존 총량이 현재와 일치할 때만 처리한다.
+현재 preload는 `gardenWindow.setMousePassthrough`, `hanzanhae.getState`, `hanzanhae.getStatistics`, `hanzanhae.completeSetup`, `hanzanhae.updateSettings`, `hanzanhae.recordCup`, `hanzanhae.cancelWater`, `hanzanhae.onStateChanged`, `hanzanhae.onWaterRecorded`를 공개한다. 메인은 정해진 앱 화면과 메인 프레임을 검증하며, 최초 설정과 설정 변경 쓰기는 대시보드에서만 허용한다. 상태는 최초 설정 전·활성 목표·목표 없음으로 나누고 실패는 `VALIDATION_ERROR`·`ALREADY_CONFIGURED`·`STALE_STATE`·`STORAGE_ERROR`로 반환한다. 최초 설정의 같은 요청은 최초 성공 결과를, 설정 변경의 같은 요청은 현재 상태를 반환한다. 호출자는 현재 상태를 다시 조회한다. 설정 변경 API의 `kind`는 `cup`, `stop`, `goal`이며, 목표 변경은 화면에 표시한 목표 ID·한국 날짜·기존 총량이 현재와 일치할 때만 처리한다.
 
 ## 원칙
 
@@ -18,7 +18,7 @@ type ApiResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; 
 
 ## 후속 설계와 구현 기능 대응
 
-아래 표는 기능 단위 설계다. 현재 목표 중단·재생성은 `updateSettings`의 `stop`·`goal`로 처리한다. 물 기록은 `recordCup`, 취소는 `cancelWater`의 `latest`·`today`로 구현했다. 상태에는 식물 단계·생기·성장점이 포함되고 물 기록 취소 시 해당 성장도 합계에서 제외된다.
+아래 표는 기능 단위 설계다. `getStatistics`는 대시보드 메인 프레임에만 허용하며 최근 7일 날짜별 총량·목표·달성, 평균·달성 횟수·최다일·전체 연속 달성을 반환한다. 실패 시 `VALIDATION_ERROR` 또는 `STORAGE_ERROR`를 반환한다. 현재 목표 중단·재생성은 `updateSettings`의 `stop`·`goal`로 처리한다. 물 기록은 `recordCup`, 취소는 `cancelWater`의 `latest`·`today`로 구현했다. 상태에는 식물 단계·생기·성장점이 포함되고 물 기록 취소 시 해당 성장도 합계에서 제외된다.
 
 ## 메서드 초안
 
@@ -51,9 +51,9 @@ type ApiResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; 
 
 ## 대시보드와 창 사이 동기화
 
-- MVP의 최근 7일 기록 화면은 한국 날짜별 총량·해당 날짜의 마지막 목표·달성 여부와 요약 통계가 필요하다. 일별 목표를 복원하는 방법과 일부 경계 상황은 [데이터 설계](database.md#대시보드-통계와-성장-단계)에서 검토한다.
+- 최근 7일 날짜별 총량·해당 날짜의 마지막 목표·달성 여부와 요약 통계는 `getStatistics`로 조회한다. 계산 기준은 [데이터 설계](database.md#대시보드-통계와-성장-단계)를 따른다.
 - 오늘 잔 수는 유효한 물 기록 개수이며 기섭취량 조정은 잔 수에 포함하지 않는다. 식물의 외형은 누적 성장량을 기준으로 한다.
-- 통계와 기록 목록을 별도 조회 함수로 제공할지 기존 조회를 확장할지는 미정이다. 앱 안 두 창은 동일한 데이터를 사용하며, 한쪽에서 변경하면 다른 쪽도 최신 상태로 갱신하도록 설계한다.
+- 통계는 별도 조회 함수로 제공한다. 한쪽 창에서 물 기록·취소나 설정을 변경하면 대시보드가 통계를 다시 읽는다.
 - 변경 알림이 필요하면 허용된 구독 함수만 preload에서 제공한다. 원시 IPC를 화면에 노출하지 않는다.
 
 ## 오류와 화면 처리 초안
