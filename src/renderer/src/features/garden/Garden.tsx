@@ -157,11 +157,6 @@ function Garden({
           aria-label={
             state.status === 'ready' ? '물 한 잔 기록하기' : '목표를 설정해야 물을 기록할 수 있어요'
           }
-          title={
-            state.status === 'ready'
-              ? `물 한 잔 기록하기 (+${state.cupMl}ml)`
-              : '설정에서 새 목표를 시작해 주세요'
-          }
           onClick={() => void record()}
         >
           <img src={wateringCan} alt="" />
@@ -179,7 +174,6 @@ function Garden({
             className="garden-undo"
             data-garden-interactive
             aria-label="최근 한 잔 취소"
-            title="최근 한 잔 취소"
             disabled={busy || cancelBusy}
             onClick={() => void undoLatest()}
           >

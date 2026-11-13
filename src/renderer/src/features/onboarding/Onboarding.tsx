@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { isMlInput } from '../water/mlInput'
 import wordmark from '../../assets/icons/wordmark.webp'
 import stage1 from '../../assets/stage1.webp'
 import stage2 from '../../assets/stage2.webp'
@@ -8,8 +9,6 @@ import can from '../../assets/icons/watering-can.webp'
 import statLeft from '../../assets/icons/stat-left.webp'
 import statCups from '../../assets/icons/stat-cups.webp'
 
-const valid = (value: string): boolean =>
-  /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0
 const glassHeight = (value: number): number =>
   Math.round(40 + (Math.min(value || 0, 1000) / 1000) * 120)
 
@@ -22,7 +21,7 @@ function Onboarding({ onComplete }: { onComplete: () => Promise<void> }): React.
   const requestId = useRef(crypto.randomUUID())
 
   function next(): void {
-    if ((step === 1 && !valid(goal)) || (step === 2 && !valid(cup))) {
+    if ((step === 1 && !isMlInput(goal)) || (step === 2 && !isMlInput(cup))) {
       setError('1ml 이상, 숫자로 입력해 주세요')
       return
     }
@@ -38,7 +37,7 @@ function Onboarding({ onComplete }: { onComplete: () => Promise<void> }): React.
     change(result && Number.isSafeInteger(result) ? String(result) : '', setter)
   }
   async function submit(): Promise<void> {
-    if (busy || !valid(goal) || !valid(cup)) return
+    if (busy || !isMlInput(goal) || !isMlInput(cup)) return
     setBusy(true)
     setError('')
     try {
@@ -172,7 +171,7 @@ function Onboarding({ onComplete }: { onComplete: () => Promise<void> }): React.
                   role={error ? 'alert' : undefined}
                 >
                   {error ||
-                    (valid(cup)
+                    (isMlInput(cup)
                       ? `하루 목표까지 약 ${Math.ceil(Number(goal) / Number(cup))}잔이에요`
                       : 'ml 단위로 입력해 주세요')}
                 </div>
