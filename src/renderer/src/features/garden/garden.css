@@ -47,10 +47,8 @@ html.garden-refresh-cursor [data-garden-interactive] {
   cursor: default !important;
 }
 
-.garden-plant:focus-visible {
-  outline: 2px solid #43ad6a;
-  outline-offset: -18px;
-  border-radius: 28px;
+.garden-plant:focus {
+  outline: none;
 }
 
 .garden-layer {
