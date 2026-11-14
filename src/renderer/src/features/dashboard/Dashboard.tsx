@@ -1,5 +1,11 @@
-import { useEffect, useState } from 'react'
-import type { AppState, SettingsInput, WaterStatistics } from '../../../../shared/appState'
+import { useEffect, useRef, useState } from 'react'
+import type {
+  AppState,
+  SettingsInput,
+  WaterStatistics,
+  GardenSettings,
+  GardenSettingsChange
+} from '../../../../shared/appState'
 import { useRecordCup } from '../water/useRecordCup'
 import { useCancelWater } from '../water/useCancelWater'
 import { isMlInput } from '../water/mlInput'
@@ -508,6 +514,61 @@ function Settings({
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [gardenSettings, setGardenSettings] = useState<GardenSettings | null>(null)
+  const [gardenError, setGardenError] = useState('')
+  const [gardenSaving, setGardenSaving] = useState(false)
+  const gardenRunning = useRef(false)
+  useEffect(() => {
+    let active = true
+    let sequence = 0
+    function load(): void {
+      const current = ++sequence
+      void window.hanzanhae
+        .getGardenSettings()
+        .then((response) => {
+          if (!active || current !== sequence) return
+          if (response.ok) {
+            setGardenSettings(response.settings)
+            setGardenError('')
+          } else setGardenError('정원 설정을 불러오지 못했어요.')
+        })
+        .catch(() => {
+          if (active && current === sequence) setGardenError('정원 설정을 불러오지 못했어요.')
+        })
+    }
+    const unsubscribe = window.hanzanhae.onGardenSettingsChanged(load)
+    load()
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [])
+  async function reloadGardenSettings(): Promise<void> {
+    setGardenError('')
+    try {
+      const response = await window.hanzanhae.getGardenSettings()
+      if (response.ok) setGardenSettings(response.settings)
+      else setGardenError('정원 설정을 불러오지 못했어요.')
+    } catch {
+      setGardenError('정원 설정을 불러오지 못했어요.')
+    }
+  }
+  async function changeGardenSettings(change: GardenSettingsChange): Promise<void> {
+    if (gardenRunning.current) return
+    gardenRunning.current = true
+    setGardenSaving(true)
+    setGardenError('')
+    try {
+      const response = await window.hanzanhae.updateGardenSettings(change)
+      if (response.ok) setGardenSettings(response.settings)
+      else setGardenError('정원 설정을 저장하지 못했어요. 다시 시도해 주세요.')
+    } catch {
+      setGardenError('정원 설정을 저장하지 못했어요. 다시 시도해 주세요.')
+    } finally {
+      gardenRunning.current = false
+      setGardenSaving(false)
+    }
+  }
   const goalId = state.status === 'ready' ? state.goalId : null
 
   async function save(input: SettingsInput): Promise<boolean> {
@@ -715,17 +776,27 @@ function Settings({
         <section className="sset">
           <div className="sset-head">
             <h2>화분 놓는 곳</h2>
-            <p>화분이 고정될 바닥을 골라요. 좌우 위치는 화분을 끌어서 옮겨요.</p>
+            <p>화분을 놓을 위치를 고르거나 직접 끌어서 옮겨요.</p>
           </div>
           <div className="place-pick">
-            <button className="place on" disabled>
+            <button
+              className={`place ${gardenSettings?.placement === 'dock' ? 'on' : ''}`}
+              aria-pressed={gardenSettings?.placement === 'dock'}
+              disabled={!gardenSettings || gardenSaving}
+              onClick={() => void changeGardenSettings({ kind: 'placement', placement: 'dock' })}
+            >
               <span className="mini">
                 <i className="dock" />
                 <img src={stages[2].image} alt="" className="on-dock" />
               </span>
               <b>Dock 위</b>
             </button>
-            <button className="place" disabled>
+            <button
+              className={`place ${gardenSettings?.placement === 'floor' ? 'on' : ''}`}
+              aria-pressed={gardenSettings?.placement === 'floor'}
+              disabled={!gardenSettings || gardenSaving}
+              onClick={() => void changeGardenSettings({ kind: 'placement', placement: 'floor' })}
+            >
               <span className="mini">
                 <i className="dock" />
                 <img src={stages[2].image} alt="" className="on-floor" />
@@ -733,6 +804,16 @@ function Settings({
               <b>화면 바닥</b>
             </button>
           </div>
+          {gardenError && (
+            <p className="water-error" role="alert">
+              {gardenError}{' '}
+              {!gardenSettings && (
+                <button className="cancel-retry" onClick={() => void reloadGardenSettings()}>
+                  다시 시도
+                </button>
+              )}
+            </p>
+          )}
         </section>
         <section className="sset">
           <div className="sset-head">
@@ -748,9 +829,16 @@ function Settings({
               <button
                 className="switch"
                 role="switch"
-                aria-checked="true"
+                aria-checked={gardenSettings?.alwaysOnTop ?? false}
                 aria-label="다른 창 위에 표시"
-                disabled
+                disabled={!gardenSettings || gardenSaving}
+                onClick={() => {
+                  if (gardenSettings)
+                    void changeGardenSettings({
+                      kind: 'alwaysOnTop',
+                      alwaysOnTop: !gardenSettings.alwaysOnTop
+                    })
+                }}
               />
             </div>
             <div className="set">

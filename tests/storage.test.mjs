@@ -251,7 +251,7 @@ test('설정 저장 실패는 이전 목표와 조정을 함께 보존한다', (
   }
 })
 
-test('버전 1 데이터는 설정을 유지하며 버전 5로 이전한다', () => {
+test('버전 1 데이터는 설정을 유지하며 버전 7으로 이전한다', () => {
   const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-migrate-'))
   const path = join(dir, 'test.sqlite')
   try {
@@ -260,7 +260,7 @@ test('버전 1 데이터는 설정을 유지하며 버전 5로 이전한다', ()
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE water_records; DROP TABLE daily_adjustments; DROP TABLE settings_receipts; PRAGMA user_version = 1'
+      'DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE water_records; DROP TABLE daily_adjustments; DROP TABLE settings_receipts; PRAGMA user_version = 1'
     )
     old.close()
     const migrated = new AppDatabase(path)
@@ -382,7 +382,7 @@ test('버전 2 데이터의 목표와 조정을 보존하며 물 기록 테이�
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE water_records; PRAGMA user_version = 2'
+      'DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE water_records; PRAGMA user_version = 2'
     )
     old.close()
     const migrated = new AppDatabase(path)
@@ -645,7 +645,7 @@ test('버전 3 데이터의 기록을 보존하며 취소 이력 테이블을 �
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; PRAGMA user_version = 3'
+      'DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; PRAGMA user_version = 3'
     )
     old.close()
     const migrated = new AppDatabase(path)
@@ -868,7 +868,9 @@ test('버전 4의 기존 물 기록은 보존하되 성장 보상을 소급하�
     state = db.recordCup({ requestId: 'old', expectedGoalId: state.goalId, day: state.day }).state
     db.close()
     const old = new DatabaseSync(path)
-    old.exec('DROP TABLE growth_events; DROP TABLE plant_vitality; PRAGMA user_version = 4')
+    old.exec(
+      'DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; PRAGMA user_version = 4'
+    )
     old.close()
     db = new AppDatabase(path, now)
     state = db.readState()
@@ -1081,6 +1083,103 @@ test('목표 없는 날은 통계 분모에서 제외하고 지난 연속 달성
     assert.equal(stats.streak, 1)
     assert.equal(stats.achievedDays, 2)
     assert.equal(stats.bestDay.day, state.day)
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('정원 설정은 최초 설정 전부터 저장하고 재실행 후 복원한다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-garden-settings-'))
+  try {
+    const path = join(dir, 'test.sqlite')
+    let db = new AppDatabase(path)
+    assert.deepEqual(db.readGardenSettings(), {
+      placement: 'dock',
+      alwaysOnTop: true,
+      x: null,
+      y: null
+    })
+    const expected = { placement: 'floor', alwaysOnTop: false, x: -1300, y: 456 }
+    assert.deepEqual(db.saveGardenSettings(expected), expected)
+    assert.deepEqual(db.readState(), { status: 'setup-required' })
+    for (const value of [
+      { ...expected, x: null },
+      { ...expected, x: 0.5 },
+      { ...expected, y: 10_000_001 },
+      { ...expected, placement: 'side' },
+      { ...expected, alwaysOnTop: 1 }
+    ])
+      assert.throws(() => db.saveGardenSettings(value), InvalidSetupError)
+    const inspector = new DatabaseSync(path)
+    inspector.exec(
+      "CREATE TRIGGER fail_garden BEFORE UPDATE ON garden_settings BEGIN SELECT RAISE(ABORT, 'failure'); END"
+    )
+    assert.throws(() => db.saveGardenSettings({ ...expected, x: 30 }))
+    assert.deepEqual(db.readGardenSettings(), expected)
+    inspector.exec('DROP TRIGGER fail_garden')
+    inspector.close()
+    db.close()
+    db = new AppDatabase(path)
+    assert.deepEqual(db.readGardenSettings(), expected)
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('버전 5 데이터 이전 시 기존 기록을 유지하고 정원 설정 기본값을 만든다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-garden-v5-'))
+  try {
+    const path = join(dir, 'test.sqlite')
+    let db = new AppDatabase(path)
+    const state = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 200 })
+    const recorded = db.recordCup({
+      requestId: 'water',
+      expectedGoalId: state.goalId,
+      day: state.day
+    }).state
+    db.close()
+    const old = new DatabaseSync(path)
+    old.exec('DROP TABLE garden_settings; PRAGMA user_version = 5')
+    old.close()
+    db = new AppDatabase(path)
+    assert.deepEqual(db.readState(), recorded)
+    assert.deepEqual(db.readGardenSettings(), {
+      placement: 'dock',
+      alwaysOnTop: true,
+      x: null,
+      y: null
+    })
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('버전 6 정원 설정은 보존하면서 직접 이동한 위치를 저장할 수 있다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-garden-v6-'))
+  try {
+    const path = join(dir, 'test.sqlite')
+    let db = new AppDatabase(path)
+    const expected = { placement: 'floor', alwaysOnTop: false, x: -700, y: 600 }
+    db.saveGardenSettings(expected)
+    db.close()
+    const old = new DatabaseSync(path)
+    old.exec(`
+      ALTER TABLE garden_settings RENAME TO tmp_settings;
+      CREATE TABLE garden_settings (id INTEGER PRIMARY KEY CHECK(id = 1), placement TEXT NOT NULL CHECK(placement IN ('dock','floor')), always_on_top INTEGER NOT NULL CHECK(always_on_top IN (0,1)), x INTEGER, y INTEGER, CHECK((x IS NULL AND y IS NULL) OR (x IS NOT NULL AND y IS NOT NULL)));
+      INSERT INTO garden_settings SELECT * FROM tmp_settings;
+      DROP TABLE tmp_settings;
+      PRAGMA user_version = 6;
+    `)
+    old.close()
+    db = new AppDatabase(path)
+    assert.deepEqual(db.readGardenSettings(), expected)
+    assert.deepEqual(db.saveGardenSettings({ ...expected, placement: 'custom' }), {
+      ...expected,
+      placement: 'custom'
+    })
     db.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
