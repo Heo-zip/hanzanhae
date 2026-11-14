@@ -41,6 +41,28 @@ const day = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit'
 }).format(new Date())
 
+// 기존 ml 목표는 보존하지만 횟수 목표를 새로 설정하기 전까지 활성 목표로 쓰지 않는다.
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function legacyState(state) {
+  const result = { ...state, status: 'goal-stopped' }
+  delete result.goalId
+  delete result.goalCount
+  return result
+}
+
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function startCountGoal(db, state, requestId = 'count-goal') {
+  return db.updateSettings({
+    requestId,
+    kind: 'goal',
+    goalCount: 8,
+    expectedGoalId: null,
+    day: state.day,
+    expectedTodayMl: state.todayMl,
+    todayMl: state.todayMl
+  })
+}
+
 test('최초 설정은 재실행해도 유지되고 같은 요청은 중복 저장되지 않는다', () => {
   const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-storage-'))
   const path = join(dir, 'test.sqlite')
@@ -49,19 +71,21 @@ test('최초 설정은 재실행해도 유지되고 같은 요청은 중복 저�
     assert.deepEqual(db.readState(), { status: 'setup-required' })
     for (const value of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
       assert.throws(
-        () => db.completeSetup({ requestId: 'bad', goalMl: value, cupMl: 200 }),
+        () => db.completeSetup({ requestId: 'bad', goalCount: value, cupMl: 200 }),
         InvalidSetupError
       )
     }
     assert.deepEqual(db.readState(), { status: 'setup-required' })
-    const input = { requestId: 'first', goalMl: 1500, cupMl: 250 }
+    const input = { requestId: 'first', goalCount: 1500, cupMl: 250 }
     const expected = {
       status: 'ready',
       goalId: 1,
-      goalMl: 1500,
+      goalCount: 1500,
       cupMl: 250,
       todayMl: 0,
       todayRecords: [],
+      todayCount: 0,
+      latestDrinkId: null,
       day,
       plantStage: 'seedling',
       plantVitality: 80,
@@ -89,7 +113,7 @@ test('저장 도중 실패하면 모든 데이터가 취소되고 다시 시도�
     inspector.exec(
       "CREATE TRIGGER fail_plant BEFORE INSERT ON plant_state BEGIN SELECT RAISE(ABORT, 'failure'); END"
     )
-    const input = { requestId: 'retry', goalMl: 1200, cupMl: 200 }
+    const input = { requestId: 'retry', goalCount: 1200, cupMl: 200 }
     assert.throws(() => db.completeSetup(input))
     assert.deepEqual(db.readState(), { status: 'setup-required' })
     assert.equal(inspector.prepare('SELECT COUNT(*) AS n FROM mutation_receipts').get().n, 0)
@@ -101,6 +125,8 @@ test('저장 도중 실패하면 모든 데이터가 취소되고 다시 시도�
       cupMl: 200,
       todayMl: 0,
       todayRecords: [],
+      todayCount: 0,
+      latestDrinkId: null,
       day,
       plantStage: 'seedling',
       plantVitality: 80,
@@ -109,10 +135,12 @@ test('저장 도중 실패하면 모든 데이터가 취소되고 다시 시도�
     assert.deepEqual(db.completeSetup(input), {
       status: 'ready',
       goalId: 1,
-      goalMl: 1200,
+      goalCount: 1200,
       cupMl: 200,
       todayMl: 0,
       todayRecords: [],
+      todayCount: 0,
+      latestDrinkId: null,
       day,
       plantStage: 'seedling',
       plantVitality: 80,
@@ -123,6 +151,8 @@ test('저장 도중 실패하면 모든 데이터가 취소되고 다시 시도�
       cupMl: 200,
       todayMl: 0,
       todayRecords: [],
+      todayCount: 0,
+      latestDrinkId: null,
       day,
       plantStage: 'seedling',
       plantVitality: 80,
@@ -159,7 +189,7 @@ test('결과 이력만 남은 손상된 데이터도 최초 설정으로 처리�
     const inspector = new DatabaseSync(path)
     inspector.exec("INSERT INTO mutation_receipts VALUES ('orphan', 1000, 200)")
     assert.throws(() => db.readState(), /불완전한 설정 데이터/)
-    assert.throws(() => db.completeSetup({ requestId: 'orphan', goalMl: 1000, cupMl: 200 }))
+    assert.throws(() => db.completeSetup({ requestId: 'orphan', goalCount: 1000, cupMl: 200 }))
     inspector.close()
     db.close()
   } finally {
@@ -172,11 +202,11 @@ test('목표 변경은 이력과 오늘 총량 차이를 보존하고 재전송�
   const path = join(dir, 'test.sqlite')
   try {
     const db = new AppDatabase(path)
-    const first = db.completeSetup({ requestId: 'setup', goalMl: 1500, cupMl: 200 })
+    const first = db.completeSetup({ requestId: 'setup', goalCount: 1500, cupMl: 200 })
     const change = {
       requestId: 'change',
       kind: 'goal',
-      goalMl: 1800,
+      goalCount: 1800,
       todayMl: 700,
       expectedTodayMl: 0,
       expectedGoalId: first.goalId,
@@ -184,9 +214,9 @@ test('목표 변경은 이력과 오늘 총량 차이를 보존하고 재전송�
     }
     const changed = db.updateSettings(change)
     assert.equal(changed.todayMl, 700)
-    assert.equal(changed.goalMl, 1800)
+    assert.equal(changed.goalCount, 1800)
     assert.deepEqual(db.updateSettings(change), changed)
-    assert.throws(() => db.updateSettings({ ...change, goalMl: 1600 }), InvalidSetupError)
+    assert.throws(() => db.updateSettings({ ...change, goalCount: 1600 }), InvalidSetupError)
     assert.throws(() => db.updateSettings({ ...change, requestId: 'stale' }), StaleStateError)
     assert.throws(
       () =>
@@ -212,7 +242,7 @@ test('목표 변경은 이력과 오늘 총량 차이를 보존하고 재전송�
     const restart = db.updateSettings({
       requestId: 'restart',
       kind: 'goal',
-      goalMl: 2000,
+      goalCount: 2000,
       todayMl: 500,
       expectedTodayMl: 700,
       expectedGoalId: null,
@@ -235,7 +265,7 @@ test('설정 저장 실패는 이전 목표와 조정을 함께 보존한다', (
   const path = join(dir, 'test.sqlite')
   try {
     const db = new AppDatabase(path)
-    const before = db.completeSetup({ requestId: 'setup', goalMl: 1500, cupMl: 200 })
+    const before = db.completeSetup({ requestId: 'setup', goalCount: 1500, cupMl: 200 })
     const inspector = new DatabaseSync(path)
     inspector.exec(
       "CREATE TRIGGER fail_adjust BEFORE INSERT ON daily_adjustments BEGIN SELECT RAISE(ABORT, 'failure'); END"
@@ -243,7 +273,7 @@ test('설정 저장 실패는 이전 목표와 조정을 함께 보존한다', (
     const input = {
       requestId: 'retry',
       kind: 'goal',
-      goalMl: 1800,
+      goalCount: 1800,
       todayMl: 500,
       expectedTodayMl: 0,
       expectedGoalId: before.goalId,
@@ -266,15 +296,15 @@ test('버전 1 데이터는 설정을 유지하며 버전 8로 이전한다', ()
   const path = join(dir, 'test.sqlite')
   try {
     const db = new AppDatabase(path)
-    const expected = db.completeSetup({ requestId: 'setup', goalMl: 1700, cupMl: 250 })
+    const expected = db.completeSetup({ requestId: 'setup', goalCount: 1700, cupMl: 250 })
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE water_records; DROP TABLE daily_adjustments; DROP TABLE settings_receipts; PRAGMA user_version = 1'
+      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE water_records; DROP TABLE daily_adjustments; DROP TABLE settings_receipts; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 1'
     )
     old.close()
     const migrated = new AppDatabase(path)
-    assert.deepEqual(migrated.readState(), expected)
+    assert.deepEqual(migrated.readState(), legacyState(expected))
     assert.equal(migrated.updateSettings({ requestId: 'cup', kind: 'cup', cupMl: 300 }).cupMl, 300)
     migrated.close()
   } finally {
@@ -287,7 +317,7 @@ test('물 기록은 용량을 보존하고 조정·이전 목표와 합산하며
   const path = join(dir, 'test.sqlite')
   try {
     const db = new AppDatabase(path)
-    const initial = db.completeSetup({ requestId: 'setup', goalMl: 300, cupMl: 200 })
+    const initial = db.completeSetup({ requestId: 'setup', goalCount: 300, cupMl: 200 })
     const first = { requestId: 'first', expectedGoalId: initial.goalId, day }
     const result = db.recordCup(first)
     assert.equal(result.created, true)
@@ -305,7 +335,7 @@ test('물 기록은 용량을 보존하고 조정·이전 목표와 합산하며
     const changed = db.updateSettings({
       requestId: 'goal',
       kind: 'goal',
-      goalMl: 2000,
+      goalCount: 2000,
       todayMl: 700,
       expectedTodayMl: 450,
       expectedGoalId: initial.goalId,
@@ -331,7 +361,7 @@ test('물 기록 저장 실패는 데이터와 요청 ID를 남기지 않고 재
   const path = join(dir, 'test.sqlite')
   try {
     const db = new AppDatabase(path)
-    const initial = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 200 })
+    const initial = db.completeSetup({ requestId: 'setup', goalCount: 1000, cupMl: 200 })
     const sql = new DatabaseSync(path)
     sql.exec(
       "CREATE TRIGGER fail_water BEFORE INSERT ON water_records BEGIN SELECT RAISE(ABORT, 'failure'); END"
@@ -358,7 +388,7 @@ test('한국 자정 이후 이전 날짜 요청은 거절하고 새 날짜 기�
   try {
     let now = new Date('2026-11-13T14:59:59.000Z')
     const db = new AppDatabase(path, () => now)
-    const initial = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 200 })
+    const initial = db.completeSetup({ requestId: 'setup', goalCount: 1000, cupMl: 200 })
     assert.equal(initial.day, '2026-11-13')
     const old = { requestId: 'before', expectedGoalId: initial.goalId, day: initial.day }
     assert.equal(db.recordCup(old).state.todayMl, 200)
@@ -379,11 +409,11 @@ test('버전 2 데이터의 목표와 조정을 보존하며 물 기록 테이�
   const path = join(dir, 'test.sqlite')
   try {
     const db = new AppDatabase(path)
-    const initial = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 250 })
+    const initial = db.completeSetup({ requestId: 'setup', goalCount: 1000, cupMl: 250 })
     const changed = db.updateSettings({
       requestId: 'change',
       kind: 'goal',
-      goalMl: 1500,
+      goalCount: 1500,
       todayMl: 300,
       expectedTodayMl: 0,
       expectedGoalId: initial.goalId,
@@ -392,13 +422,14 @@ test('버전 2 데이터의 목표와 조정을 보존하며 물 기록 테이�
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE water_records; PRAGMA user_version = 2'
+      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE water_records; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 2'
     )
     old.close()
     const migrated = new AppDatabase(path)
-    assert.deepEqual(migrated.readState(), changed)
+    assert.deepEqual(migrated.readState(), legacyState(changed))
+    const countGoal = startCountGoal(migrated, migrated.readState())
     assert.equal(
-      migrated.recordCup({ requestId: 'cup', expectedGoalId: changed.goalId, day }).state.todayMl,
+      migrated.recordCup({ requestId: 'cup', expectedGoalId: countGoal.goalId, day }).state.todayMl,
       550
     )
     migrated.close()
@@ -412,7 +443,7 @@ test('최근 한 잔 취소는 최신 기록만 대상으로 하고 재전송해
   const path = join(dir, 'test.sqlite')
   try {
     const db = new AppDatabase(path)
-    const start = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 200 })
+    const start = db.completeSetup({ requestId: 'setup', goalCount: 1000, cupMl: 200 })
     const base = { expectedGoalId: start.goalId, day: start.day }
     const one = db.recordCup({ ...base, requestId: 'one' }).state
     const two = db.recordCup({ ...base, requestId: 'two' }).state
@@ -458,7 +489,7 @@ test('오늘 전체 취소는 현재 목표 기록만 취소하고 이전 목표
   try {
     let now = new Date('2026-11-12T14:00:00Z')
     const db = new AppDatabase(path, () => now)
-    const a = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 250 })
+    const a = db.completeSetup({ requestId: 'setup', goalCount: 1000, cupMl: 250 })
     const previousDay = db.recordCup({
       requestId: 'yesterday',
       expectedGoalId: a.goalId,
@@ -471,7 +502,7 @@ test('오늘 전체 취소는 현재 목표 기록만 취소하고 이전 목표
     const b = db.updateSettings({
       requestId: 'goal',
       kind: 'goal',
-      goalMl: 2000,
+      goalCount: 2000,
       todayMl: 700,
       expectedTodayMl: 500,
       expectedGoalId: a.goalId,
@@ -530,7 +561,7 @@ test('전체 취소는 확인 후 기록이 바뀌면 거절하고 저장 실패
   const path = join(dir, 'test.sqlite')
   try {
     const db = new AppDatabase(path)
-    const state = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 250 })
+    const state = db.completeSetup({ requestId: 'setup', goalCount: 1000, cupMl: 250 })
     const base = { expectedGoalId: state.goalId, day: state.day }
     const one = db.recordCup({ ...base, requestId: 'one' }).state
     const stale = {
@@ -576,7 +607,7 @@ test('취소 후 총량이 음수면 어떤 기록도 취소하지 않는다', (
   const path = join(dir, 'test.sqlite')
   try {
     const db = new AppDatabase(path)
-    const initial = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 500 })
+    const initial = db.completeSetup({ requestId: 'setup', goalCount: 1000, cupMl: 500 })
     db.recordCup({ requestId: 'one', expectedGoalId: initial.goalId, day: initial.day })
     const sql = new DatabaseSync(path)
     sql
@@ -612,7 +643,7 @@ test('한국 자정 이후 이전 날짜 취소 요청을 거절하고 어제 �
   try {
     let now = new Date('2026-11-13T14:59:59Z')
     const db = new AppDatabase(path, () => now)
-    const initial = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 250 })
+    const initial = db.completeSetup({ requestId: 'setup', goalCount: 1000, cupMl: 250 })
     const recorded = db.recordCup({
       requestId: 'one',
       expectedGoalId: initial.goalId,
@@ -646,7 +677,7 @@ test('버전 3 데이터의 기록을 보존하며 취소 이력 테이블을 �
   const path = join(dir, 'test.sqlite')
   try {
     const db = new AppDatabase(path)
-    const initial = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 250 })
+    const initial = db.completeSetup({ requestId: 'setup', goalCount: 1000, cupMl: 250 })
     const recorded = db.recordCup({
       requestId: 'one',
       expectedGoalId: initial.goalId,
@@ -655,25 +686,26 @@ test('버전 3 데이터의 기록을 보존하며 취소 이력 테이블을 �
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; PRAGMA user_version = 3'
+      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 3'
     )
     old.close()
     const migrated = new AppDatabase(path)
     assert.deepEqual(migrated.readState(), {
-      ...recorded,
+      ...legacyState(recorded),
       plantVitality: 80,
       growthPoints: 0,
       plantStage: 'seedling'
     })
-    assert.equal(
-      migrated.cancelWater({
-        requestId: 'cancel',
-        kind: 'latest',
-        expectedGoalId: initial.goalId,
-        day: initial.day,
-        recordId: recorded.todayRecords[0].id
-      }).state.todayMl,
-      0
+    assert.throws(
+      () =>
+        migrated.cancelWater({
+          requestId: 'cancel',
+          kind: 'latest',
+          expectedGoalId: initial.goalId,
+          day: initial.day,
+          recordId: recorded.todayRecords[0].id
+        }),
+      StaleStateError
     )
     migrated.close()
   } finally {
@@ -686,7 +718,7 @@ test('목표가 중단되거나 다른 목표로 바뀌면 이전 목표 기록�
   const path = join(dir, 'test.sqlite')
   try {
     const db = new AppDatabase(path)
-    const first = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 250 })
+    const first = db.completeSetup({ requestId: 'setup', goalCount: 1000, cupMl: 250 })
     const recorded = db.recordCup({
       requestId: 'one',
       expectedGoalId: first.goalId,
@@ -706,7 +738,7 @@ test('목표가 중단되거나 다른 목표로 바뀌면 이전 목표 기록�
       expectedGoalId: null,
       day: first.day,
       expectedTodayMl: 250,
-      goalMl: 1500,
+      goalCount: 1500,
       todayMl: 250
     })
     assert.throws(() => db.cancelWater({ ...old, requestId: 'different-goal' }), StaleStateError)
@@ -718,24 +750,24 @@ test('목표가 중단되거나 다른 목표로 바뀌면 이전 목표 기록�
   }
 })
 
-test('목표 달성과 초과 물 기록에 성장량을 부여하고 취소·재달성은 중복되지 않는다', () => {
+test('기록한 텀블러 용량에 따라 성장하고 취소·재기록이 중복되지 않는다', () => {
   const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-growth-'))
   try {
     const db = new AppDatabase(join(dir, 'test.sqlite'), () => new Date('2026-11-13T03:00:00Z'))
-    let state = db.completeSetup({ requestId: 'setup', goalMl: 500, cupMl: 300 })
+    let state = db.completeSetup({ requestId: 'setup', goalCount: 500, cupMl: 300 })
     // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
     const record = (id) =>
       db.recordCup({ requestId: id, expectedGoalId: state.goalId, day: state.day })
     state = record('one').state
-    assert.equal(state.growthPoints, 0)
+    assert.equal(state.growthPoints, 300)
     assert.equal(state.plantVitality, 95)
     state = record('two').state
-    assert.equal(state.growthPoints, 1200)
+    assert.equal(state.growthPoints, 600)
     assert.equal(state.plantVitality, 100)
     state = record('three').state
-    assert.equal(state.growthPoints, 1800)
+    assert.equal(state.growthPoints, 900)
     assert.equal(record('three').created, false)
-    assert.equal(db.readState().growthPoints, 1800)
+    assert.equal(db.readState().growthPoints, 900)
     state = db.cancelWater({
       requestId: 'undo-three',
       kind: 'latest',
@@ -743,7 +775,7 @@ test('목표 달성과 초과 물 기록에 성장량을 부여하고 취소·�
       day: state.day,
       recordId: state.todayRecords[0].id
     }).state
-    assert.equal(state.growthPoints, 1200)
+    assert.equal(state.growthPoints, 600)
     state = db.cancelWater({
       requestId: 'undo-two',
       kind: 'latest',
@@ -751,9 +783,9 @@ test('목표 달성과 초과 물 기록에 성장량을 부여하고 취소·�
       day: state.day,
       recordId: state.todayRecords[0].id
     }).state
-    assert.equal(state.growthPoints, 0)
+    assert.equal(state.growthPoints, 300)
     state = record('four').state
-    assert.equal(state.growthPoints, 1200)
+    assert.equal(state.growthPoints, 600)
     db.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -766,7 +798,7 @@ test('목표 변경 후 전체 취소는 이전 목표와 이전 날짜의 성�
   try {
     const path = join(dir, 'test.sqlite')
     const db = new AppDatabase(path, () => now)
-    let state = db.completeSetup({ requestId: 'setup', goalMl: 100, cupMl: 100 })
+    let state = db.completeSetup({ requestId: 'setup', goalCount: 100, cupMl: 1000 })
     for (let i = 0; i < 3; i++)
       state = db.recordCup({
         requestId: `old-${i}`,
@@ -789,7 +821,7 @@ test('목표 변경 후 전체 취소는 이전 목표와 이전 날짜의 성�
       expectedGoalId: state.goalId,
       expectedTodayMl: state.todayMl,
       day: state.day,
-      goalMl: 200,
+      goalCount: 200,
       todayMl: state.todayMl
     })
     state = db.recordCup({
@@ -808,7 +840,7 @@ test('목표 변경 후 전체 취소는 이전 목표와 이전 날짜의 성�
         .map((item) => item.id)
     }).state
     assert.equal(state.growthPoints, 4000)
-    assert.equal(state.todayMl, 100)
+    assert.equal(state.todayMl, 1000)
     db.close()
     const reopened = new AppDatabase(path, () => now)
     assert.equal(reopened.readState().growthPoints, 4000)
@@ -824,7 +856,7 @@ test('성장 저장 실패는 물 기록과 생기 회복도 함께 롤백한다
   try {
     const path = join(dir, 'test.sqlite')
     const db = new AppDatabase(path, () => new Date('2026-11-13T03:00:00Z'))
-    const state = db.completeSetup({ requestId: 'setup', goalMl: 100, cupMl: 100 })
+    const state = db.completeSetup({ requestId: 'setup', goalCount: 100, cupMl: 100 })
     const inspector = new DatabaseSync(path)
     inspector.exec(
       "CREATE TRIGGER fail_growth BEFORE INSERT ON growth_events BEGIN SELECT RAISE(ABORT, 'failure'); END"
@@ -834,7 +866,7 @@ test('성장 저장 실패는 물 기록과 생기 회복도 함께 롤백한다
     assert.deepEqual(db.readState(), state)
     inspector.exec('DROP TRIGGER fail_growth')
     const result = db.recordCup(input)
-    assert.equal(result.state.growthPoints, 1000)
+    assert.equal(result.state.growthPoints, 100)
     assert.equal(result.state.plantVitality, 95)
     inspector.close()
     db.close()
@@ -849,7 +881,7 @@ test('생기는 실행 중과 종료 중 다른 속도로 감소하고 저장과
   try {
     const path = join(dir, 'test.sqlite')
     let db = new AppDatabase(path, () => now)
-    db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 200 })
+    db.completeSetup({ requestId: 'setup', goalCount: 1000, cupMl: 200 })
     now = new Date('2026-11-13T05:00:00Z')
     assert.equal(db.readState().plantVitality, 70)
     db.close()
@@ -874,12 +906,12 @@ test('버전 4의 기존 물 기록은 보존하되 성장 보상을 소급하�
   try {
     const path = join(dir, 'test.sqlite')
     let db = new AppDatabase(path, now)
-    let state = db.completeSetup({ requestId: 'setup', goalMl: 100, cupMl: 100 })
+    let state = db.completeSetup({ requestId: 'setup', goalCount: 100, cupMl: 100 })
     state = db.recordCup({ requestId: 'old', expectedGoalId: state.goalId, day: state.day }).state
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; PRAGMA user_version = 4'
+      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 4'
     )
     old.close()
     db = new AppDatabase(path, now)
@@ -888,8 +920,9 @@ test('버전 4의 기존 물 기록은 보존하되 성장 보상을 소급하�
     assert.equal(state.todayRecords.length, 1)
     assert.equal(state.growthPoints, 0)
     assert.equal(state.plantVitality, 80)
+    state = startCountGoal(db, state)
     state = db.recordCup({ requestId: 'new', expectedGoalId: state.goalId, day: state.day }).state
-    assert.equal(state.growthPoints, 1000)
+    assert.equal(state.growthPoints, 100)
     db.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -902,7 +935,7 @@ test('마지막 주기 저장 이후 강제 종료로 간주하면 남은 시간
   try {
     const path = join(dir, 'test.sqlite')
     const interrupted = new AppDatabase(path, () => now)
-    interrupted.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 200 })
+    interrupted.completeSetup({ requestId: 'setup', goalCount: 1000, cupMl: 200 })
     now = new Date('2026-11-13T05:00:00Z')
     interrupted.checkpointPlant()
     now = new Date('2026-11-14T05:00:00Z')
@@ -935,9 +968,15 @@ test('통계는 한국 날짜마다 마지막 목표와 취소·조정된 총량
   let now = new Date('2026-11-10T14:59:00Z')
   try {
     const db = new AppDatabase(join(dir, 'test.sqlite'), () => now)
-    let state = db.completeSetup({ requestId: 'setup', goalMl: 200, cupMl: 100 })
+    let state = db.completeSetup({ requestId: 'setup', goalCount: 2, cupMl: 100 })
     state = db.recordCup({
       requestId: 'before-midnight',
+      expectedGoalId: state.goalId,
+      day: state.day
+    }).state
+    state = db.recordDrinkAction({
+      requestId: 'count-before',
+      kind: 'add',
       expectedGoalId: state.goalId,
       day: state.day
     }).state
@@ -949,13 +988,19 @@ test('통계는 한국 날짜마다 마지막 목표와 취소·조정된 총량
       expectedGoalId: state.goalId,
       day: state.day
     }).state
+    state = db.recordDrinkAction({
+      requestId: 'count-morning',
+      kind: 'add',
+      expectedGoalId: state.goalId,
+      day: state.day
+    }).state
     state = db.updateSettings({
       requestId: 'new-goal',
       kind: 'goal',
       expectedGoalId: state.goalId,
       expectedTodayMl: state.todayMl,
       day: state.day,
-      goalMl: 150,
+      goalCount: 2,
       todayMl: 120
     })
     state = db.recordCup({
@@ -963,17 +1008,27 @@ test('통계는 한국 날짜마다 마지막 목표와 취소·조정된 총량
       expectedGoalId: state.goalId,
       day: state.day
     }).state
+    state = db.recordDrinkAction({
+      requestId: 'count-afternoon',
+      kind: 'add',
+      expectedGoalId: state.goalId,
+      day: state.day
+    }).state
     let stats = db.readStatistics()
     assert.deepEqual(stats.days.at(-2), {
       day: '2026-11-10',
       totalMl: 100,
-      goalMl: 200,
+      goalCount: 2,
+      goalMl: null,
+      drinkCount: 1,
       achieved: false
     })
     assert.deepEqual(stats.days.at(-1), {
       day: '2026-11-11',
       totalMl: 220,
-      goalMl: 150,
+      goalCount: 2,
+      goalMl: null,
+      drinkCount: 2,
       achieved: true
     })
     assert.equal(stats.averageMl, 160)
@@ -991,19 +1046,23 @@ test('통계는 한국 날짜마다 마지막 목표와 취소·조정된 총량
     assert.deepEqual(stats.days.at(-1), {
       day: '2026-11-11',
       totalMl: 120,
-      goalMl: 150,
-      achieved: false
+      goalCount: 2,
+      goalMl: null,
+      drinkCount: 2,
+      achieved: true
     })
-    assert.equal(stats.achievedDays, 0)
-    assert.equal(stats.streak, 0)
+    assert.equal(stats.achievedDays, 1)
+    assert.equal(stats.streak, 1)
     db.updateSettings({ requestId: 'stop', kind: 'stop', expectedGoalId: state.goalId })
-    assert.equal(db.readStatistics().days.at(-1).goalMl, 150)
+    assert.equal(db.readStatistics().days.at(-1).goalCount, 2)
     now = new Date('2026-11-11T15:01:00Z')
     stats = db.readStatistics()
     assert.deepEqual(stats.days.at(-1), {
       day: '2026-11-12',
       totalMl: 0,
+      goalCount: null,
       goalMl: null,
+      drinkCount: 0,
       achieved: false
     })
     assert.equal(stats.trackedDays, 2)
@@ -1020,12 +1079,18 @@ test('연속 달성은 7일을 넘어 이어지고 오늘 진행 중에는 어�
   try {
     const path = join(dir, 'test.sqlite')
     const db = new AppDatabase(path, () => now)
-    let state = db.completeSetup({ requestId: 'setup', goalMl: 100, cupMl: 100 })
+    let state = db.completeSetup({ requestId: 'setup', goalCount: 1, cupMl: 100 })
     for (let i = 0; i < 10; i++) {
       now = new Date(Date.UTC(2026, 10, 1 + i, 3))
       state = db.readState()
       state = db.recordCup({
         requestId: `cup-${i}`,
+        expectedGoalId: state.goalId,
+        day: state.day
+      }).state
+      state = db.recordDrinkAction({
+        requestId: `drink-${i}`,
+        kind: 'add',
         expectedGoalId: state.goalId,
         day: state.day
       }).state
@@ -1039,18 +1104,24 @@ test('연속 달성은 7일을 넘어 이어지고 오늘 진행 중에는 어�
     assert.equal(stats.bestDay.day, '2026-11-10')
     state = db.readState()
     state = db.recordCup({ requestId: 'today', expectedGoalId: state.goalId, day: state.day }).state
+    state = db.recordDrinkAction({
+      requestId: 'drink-today',
+      kind: 'add',
+      expectedGoalId: state.goalId,
+      day: state.day
+    }).state
     assert.equal(db.readStatistics().streak, 11)
-    db.cancelWater({
+    db.recordDrinkAction({
       requestId: 'cancel-today',
-      kind: 'latest',
+      kind: 'undo',
       expectedGoalId: state.goalId,
       day: state.day,
-      recordId: state.todayRecords[0].id
+      recordId: state.latestDrinkId
     })
     assert.equal(db.readStatistics().streak, 10)
     const inspector = new DatabaseSync(path)
     inspector
-      .prepare('UPDATE water_records SET cancelled_at = ? WHERE day = ?')
+      .prepare('UPDATE drink_actions SET cancelled_at = ? WHERE day = ?')
       .run(now.toISOString(), '2026-11-08')
     assert.equal(db.readStatistics().streak, 2)
     inspector.close()
@@ -1069,8 +1140,14 @@ test('목표 없는 날은 통계 분모에서 제외하고 지난 연속 달성
   try {
     const db = new AppDatabase(join(dir, 'test.sqlite'), () => now)
     assert.throws(() => db.readStatistics(), StaleStateError)
-    let state = db.completeSetup({ requestId: 'setup', goalMl: 100, cupMl: 100 })
+    let state = db.completeSetup({ requestId: 'setup', goalCount: 1, cupMl: 100 })
     state = db.recordCup({ requestId: 'first', expectedGoalId: state.goalId, day: state.day }).state
+    state = db.recordDrinkAction({
+      requestId: 'first-count',
+      kind: 'add',
+      expectedGoalId: state.goalId,
+      day: state.day
+    }).state
     db.updateSettings({ requestId: 'stop', kind: 'stop', expectedGoalId: state.goalId })
     now = new Date('2026-11-03T03:00:00Z')
     state = db.readState()
@@ -1080,15 +1157,21 @@ test('목표 없는 날은 통계 분모에서 제외하고 지난 연속 달성
       expectedGoalId: null,
       expectedTodayMl: state.todayMl,
       day: state.day,
-      goalMl: 100,
+      goalCount: 1,
       todayMl: 0
     })
     let stats = db.readStatistics()
-    assert.equal(stats.days.at(-2).goalMl, null)
+    assert.equal(stats.days.at(-2).goalCount, null)
     assert.equal(stats.trackedDays, 2)
     assert.equal(stats.averageMl, 50)
     assert.equal(stats.streak, 0)
     state = db.recordCup({ requestId: 'today', expectedGoalId: state.goalId, day: state.day }).state
+    state = db.recordDrinkAction({
+      requestId: 'today-count',
+      kind: 'add',
+      expectedGoalId: state.goalId,
+      day: state.day
+    }).state
     stats = db.readStatistics()
     assert.equal(stats.streak, 1)
     assert.equal(stats.achievedDays, 2)
@@ -1143,7 +1226,7 @@ test('버전 5 데이터 이전 시 기존 기록을 유지하고 정원 설정 
   try {
     const path = join(dir, 'test.sqlite')
     let db = new AppDatabase(path)
-    const state = db.completeSetup({ requestId: 'setup', goalMl: 1000, cupMl: 200 })
+    const state = db.completeSetup({ requestId: 'setup', goalCount: 1000, cupMl: 200 })
     const recorded = db.recordCup({
       requestId: 'water',
       expectedGoalId: state.goalId,
@@ -1151,10 +1234,12 @@ test('버전 5 데이터 이전 시 기존 기록을 유지하고 정원 설정 
     }).state
     db.close()
     const old = new DatabaseSync(path)
-    old.exec('DROP TABLE reminder_settings; DROP TABLE garden_settings; PRAGMA user_version = 5')
+    old.exec(
+      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 5'
+    )
     old.close()
     db = new AppDatabase(path)
-    assert.deepEqual(db.readState(), recorded)
+    assert.deepEqual(db.readState(), legacyState(recorded))
     assert.deepEqual(db.readGardenSettings(), {
       placement: 'dock',
       alwaysOnTop: true,
@@ -1182,7 +1267,7 @@ test('버전 6 정원 설정은 보존하면서 직접 이동한 위치를 저�
       CREATE TABLE garden_settings (id INTEGER PRIMARY KEY CHECK(id = 1), placement TEXT NOT NULL CHECK(placement IN ('dock','floor')), always_on_top INTEGER NOT NULL CHECK(always_on_top IN (0,1)), x INTEGER, y INTEGER, CHECK((x IS NULL AND y IS NULL) OR (x IS NOT NULL AND y IS NOT NULL)));
       INSERT INTO garden_settings SELECT * FROM tmp_settings;
       DROP TABLE tmp_settings;
-      PRAGMA user_version = 6;
+      DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 6;
     `)
     old.close()
     db = new AppDatabase(path)
@@ -1203,14 +1288,16 @@ test('버전 7의 기록과 위치를 보존하며 알림 설정을 추가하고
     const path = join(dir, 'test.sqlite')
     let now = new Date('2026-11-13T00:00:00.000Z')
     let db = new AppDatabase(path, () => now)
-    let state = db.completeSetup({ requestId: 'setup', goalMl: 1500, cupMl: 250 })
+    let state = db.completeSetup({ requestId: 'setup', goalCount: 1500, cupMl: 250 })
     const position = { placement: 'custom', alwaysOnTop: true, x: 100, y: 200 }
     db.saveGardenSettings(position)
     now = new Date('2026-11-13T01:00:00.000Z')
     state = db.recordCup({ requestId: 'water', expectedGoalId: state.goalId, day: state.day }).state
     db.close()
     const old = new DatabaseSync(path)
-    old.exec('DROP TABLE reminder_settings; PRAGMA user_version = 7')
+    old.exec(
+      'DROP TABLE reminder_settings; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 7'
+    )
     old.close()
     db = new AppDatabase(path, () => now)
     const initial = { enabled: false, intervalMinutes: 120, startTime: '09:00', endTime: '21:00' }
@@ -1229,17 +1316,25 @@ test('버전 7의 기록과 위치를 보존하며 알림 설정을 추가하고
     )
     assert.deepEqual(db.readReminderSettings(), saved)
     db.recordReminderShown(now)
-    assert.equal(db.readReminderContext().latestRecordAt, now.toISOString())
+    assert.equal(db.readReminderContext().latestRecordAt, null)
     assert.equal(db.readReminderContext().lastNotifiedAt, now.toISOString())
-    state = db.cancelWater({
-      requestId: 'cancel',
-      kind: 'latest',
+    state = startCountGoal(db, db.readState())
+    state = db.recordDrinkAction({
+      requestId: 'count',
+      kind: 'add',
+      expectedGoalId: state.goalId,
+      day: state.day
+    }).state
+    assert.equal(db.readReminderContext().latestRecordAt, now.toISOString())
+    state = db.recordDrinkAction({
+      requestId: 'cancel-count',
+      kind: 'undo',
       expectedGoalId: state.goalId,
       day: state.day,
-      recordId: state.todayRecords[0].id
+      recordId: state.latestDrinkId
     }).state
     assert.equal(db.readReminderContext().latestRecordAt, null)
-    assert.equal(state.todayMl, 0)
+    assert.equal(state.todayMl, 250)
     db.close()
     db = new AppDatabase(path, () => now)
     assert.deepEqual(db.readReminderSettings(), saved)
@@ -1279,22 +1374,34 @@ test('최초 설정부터 달성·취소·통계·알림 기준과 재실행 복
   try {
     db = new AppDatabase(path, () => now)
     assert.equal(db.readState().status, 'setup-required')
-    let state = db.completeSetup({ requestId: 'setup-flow', goalMl: 500, cupMl: 250 })
+    let state = db.completeSetup({ requestId: 'setup-flow', goalCount: 2, cupMl: 250 })
     const goalId = state.goalId
     const reminders = { enabled: true, intervalMinutes: 60, startTime: '09:00', endTime: '21:00' }
     db.saveReminderSettings(reminders)
     const firstTime = now.toISOString()
     state = db.recordCup({ requestId: 'flow-first', expectedGoalId: goalId, day: state.day }).state
     assert.equal(state.todayMl, 250)
-    assert.equal(state.growthPoints, 0)
+    assert.equal(state.growthPoints, 250)
+    state = db.recordDrinkAction({
+      requestId: 'count-first',
+      kind: 'add',
+      expectedGoalId: goalId,
+      day: state.day
+    }).state
     assert.equal(db.readReminderContext().latestRecordAt, firstTime)
 
     now = new Date('2026-11-14T04:00:00.000Z')
     state = db.recordCup({ requestId: 'flow-second', expectedGoalId: goalId, day: state.day }).state
     assert.equal(state.todayMl, 500)
-    assert.equal(state.growthPoints, 1000)
+    assert.equal(state.growthPoints, 500)
+    state = db.recordDrinkAction({
+      requestId: 'count-second',
+      kind: 'add',
+      expectedGoalId: goalId,
+      day: state.day
+    }).state
     assert.equal(db.readStatistics().days.at(-1).achieved, true)
-    assert.equal(db.readReminderContext().todayMl, 500)
+    assert.equal(db.readReminderContext().todayCount, 2)
 
     state = db.cancelWater({
       requestId: 'flow-undo',
@@ -1304,13 +1411,27 @@ test('최초 설정부터 달성·취소·통계·알림 기준과 재실행 복
       recordId: state.todayRecords[0].id
     }).state
     assert.equal(state.todayMl, 250)
-    assert.equal(state.growthPoints, 0)
+    assert.equal(state.growthPoints, 250)
+    assert.equal(db.readStatistics().days.at(-1).achieved, true)
+    state = db.recordDrinkAction({
+      requestId: 'count-undo',
+      kind: 'undo',
+      expectedGoalId: goalId,
+      day: state.day,
+      recordId: state.latestDrinkId
+    }).state
     assert.equal(db.readStatistics().days.at(-1).achieved, false)
     assert.equal(db.readReminderContext().latestRecordAt, firstTime)
 
     now = new Date('2026-11-14T04:15:00.000Z')
     state = db.recordCup({ requestId: 'flow-again', expectedGoalId: goalId, day: state.day }).state
-    assert.equal(state.growthPoints, 1000)
+    assert.equal(state.growthPoints, 500)
+    state = db.recordDrinkAction({
+      requestId: 'count-again',
+      kind: 'add',
+      expectedGoalId: goalId,
+      day: state.day
+    }).state
     state = db.cancelWater({
       requestId: 'flow-undo-all',
       kind: 'today',
@@ -1321,8 +1442,8 @@ test('최초 설정부터 달성·취소·통계·알림 기준과 재실행 복
     assert.equal(state.goalId, goalId)
     assert.equal(state.todayMl, 0)
     assert.equal(state.growthPoints, 0)
-    assert.equal(db.readStatistics().days.at(-1).achieved, false)
-    assert.equal(db.readReminderContext().latestRecordAt, null)
+    assert.equal(db.readStatistics().days.at(-1).achieved, true)
+    assert.equal(db.readReminderContext().latestRecordAt, now.toISOString())
     db.close()
 
     db = new AppDatabase(path, () => now)
@@ -1330,7 +1451,7 @@ test('최초 설정부터 달성·취소·통계·알림 기준과 재실행 복
     assert.equal(db.readState().todayMl, 0)
     assert.equal(db.readState().growthPoints, 0)
     assert.deepEqual(db.readReminderSettings(), reminders)
-    assert.equal(db.readStatistics().days.at(-1).achieved, false)
+    assert.equal(db.readStatistics().days.at(-1).achieved, true)
   } finally {
     db?.close()
     rmSync(dir, { recursive: true, force: true })
@@ -1342,17 +1463,19 @@ test('스키마 이전 전 사용자 기록을 복구 가능한 SQLite 백업으
   const path = join(dir, 'hanzanhae.sqlite')
   try {
     let db = new AppDatabase(path)
-    const initial = db.completeSetup({ requestId: 'backup-setup', goalMl: 250, cupMl: 250 })
+    const initial = db.completeSetup({ requestId: 'backup-setup', goalCount: 250, cupMl: 250 })
     const garden = { placement: 'custom', alwaysOnTop: false, x: 100, y: 200 }
     db.saveGardenSettings(garden)
     db.recordCup({ requestId: 'backup-water', expectedGoalId: initial.goalId, day: initial.day })
     db.close()
     const old = new DatabaseSync(path)
     // WAL에 아직 남아 있는 변경도 백업에 반영돼야 한다.
-    old.exec('PRAGMA journal_mode = WAL; DROP TABLE reminder_settings; PRAGMA user_version = 7')
+    old.exec(
+      'PRAGMA journal_mode = WAL; DROP TABLE reminder_settings; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 7'
+    )
     db = new AppDatabase(path)
     assert.equal(db.readState().todayMl, 250)
-    assert.equal(db.readState().growthPoints, 1000)
+    assert.equal(db.readState().growthPoints, 250)
     assert.deepEqual(db.readGardenSettings(), garden)
     db.close()
     old.close()
@@ -1362,7 +1485,7 @@ test('스키마 이전 전 사용자 기록을 복구 가능한 SQLite 백업으
     assert.equal(backup.prepare('PRAGMA user_version').get().user_version, 7)
     assert.equal(backup.prepare('SELECT COUNT(*) AS count FROM water_records').get().count, 1)
     assert.equal(backup.prepare('SELECT target_ml FROM goal_sessions').get().target_ml, 250)
-    assert.equal(backup.prepare('SELECT points FROM growth_events').get().points, 1000)
+    assert.equal(backup.prepare('SELECT points FROM growth_events').get().points, 250)
     assert.equal(backup.prepare('SELECT placement FROM garden_settings').get().placement, 'custom')
     backup.close()
   } finally {
@@ -1375,16 +1498,18 @@ test('마이그레이션 전 백업을 만들 수 없다면 기존 데이터를 
   const path = join(dir, 'hanzanhae.sqlite')
   try {
     const db = new AppDatabase(path)
-    db.completeSetup({ requestId: 'backup-fail-setup', goalMl: 1000, cupMl: 250 })
+    db.completeSetup({ requestId: 'backup-fail-setup', goalCount: 1000, cupMl: 250 })
     db.close()
     const old = new DatabaseSync(path)
-    old.exec('DROP TABLE reminder_settings; PRAGMA user_version = 7')
+    old.exec(
+      'DROP TABLE reminder_settings; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 7'
+    )
     old.close()
     writeFileSync(join(dir, 'backups'), '백업 폴더를 만들 수 없는 상황')
     assert.throws(() => new AppDatabase(path))
     const unchanged = new DatabaseSync(path, { readOnly: true })
     assert.equal(unchanged.prepare('PRAGMA user_version').get().user_version, 7)
-    assert.equal(unchanged.prepare('SELECT target_ml FROM goal_sessions').get().target_ml, 1000)
+    assert.equal(unchanged.prepare('SELECT target_ml FROM goal_sessions').get().target_ml, 250)
     unchanged.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -1396,15 +1521,15 @@ test('더 최신 앱의 데이터베이스는 이전 버전에서 변경하지 �
   const path = join(dir, 'hanzanhae.sqlite')
   try {
     const db = new AppDatabase(path)
-    db.completeSetup({ requestId: 'future-setup', goalMl: 1000, cupMl: 250 })
+    db.completeSetup({ requestId: 'future-setup', goalCount: 1000, cupMl: 250 })
     db.close()
     const future = new DatabaseSync(path)
-    future.exec('PRAGMA user_version = 9')
+    future.exec('PRAGMA user_version = 10')
     future.close()
     assert.throws(() => new AppDatabase(path), /지원하지 않는 데이터베이스 버전/)
     const unchanged = new DatabaseSync(path, { readOnly: true })
-    assert.equal(unchanged.prepare('PRAGMA user_version').get().user_version, 9)
-    assert.equal(unchanged.prepare('SELECT target_ml FROM goal_sessions').get().target_ml, 1000)
+    assert.equal(unchanged.prepare('PRAGMA user_version').get().user_version, 10)
+    assert.equal(unchanged.prepare('SELECT target_ml FROM goal_sessions').get().target_ml, 250)
     unchanged.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })

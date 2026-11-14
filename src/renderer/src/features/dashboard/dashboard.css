@@ -223,14 +223,6 @@ button {
   color: var(--text);
   font-weight: 700;
 }
-.side .foot {
-  margin-top: auto;
-  font-size: 12px;
-  color: var(--text-muted);
-  padding: 0 4px;
-  line-height: 1.6;
-}
-
 main {
   padding: 36px 40px;
   overflow: auto;
@@ -478,8 +470,19 @@ main {
 .today-actions {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 14px;
+  width: min(100%, 390px);
+  gap: 12px;
+}
+.today-action-links {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 16px;
+}
+.today-primary-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 .goal-link {
   font-size: 13px;
@@ -490,8 +493,10 @@ main {
   color: var(--text-sub);
 }
 .today .drink {
-  width: 280px;
+  min-height: 58px;
   margin-top: 0;
+  padding: 12px 8px;
+  font-size: 14px;
 }
 .stretch {
   display: flex;
@@ -596,6 +601,14 @@ main {
   font-weight: 600;
   opacity: 0.85;
 }
+.drink.drink-outline {
+  border: 1.5px solid var(--brand);
+  background: #fff;
+  color: var(--brand);
+}
+.drink.drink-outline:hover {
+  background: var(--brand-soft);
+}
 
 .tiles {
   display: grid;
@@ -643,9 +656,10 @@ main {
 .records {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 16px 0 0;
   max-height: 252px;
-  overflow: auto;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 .records li {
   display: flex;
@@ -874,15 +888,15 @@ main {
   padding-left: 32px;
 }
 
-/* ── 설정: 왼쪽 제목·설명, 오른쪽 내용의 2단 목록. 카드는 토글 묶음에만 쓴다 ── */
+/* ── 설정: 제목 바로 아래에 설정을 배치한다 ── */
 .settings {
-  max-width: 920px;
+  max-width: 760px;
 }
 .sset {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  gap: 48px;
-  padding: 32px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 28px 0;
   border-top: 1px solid var(--line);
 }
 .sset:first-child {
@@ -890,14 +904,9 @@ main {
   padding-top: 8px;
 }
 .sset-head h2 {
-  margin: 0 0 8px;
-  font-size: 17px;
-}
-.sset-head p {
   margin: 0;
-  font-size: 13px;
-  color: var(--text-sub);
-  line-height: 1.6;
+  font-size: 18px;
+  line-height: 1.4;
 }
 .goal-row {
   display: flex;
@@ -966,20 +975,6 @@ main {
 }
 .group .set {
   padding: 16px 0;
-}
-.data-note {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  font-size: 14px;
-  color: var(--text-sub);
-  line-height: 1.6;
-}
-.data-note img {
-  width: 40px;
-  height: 40px;
-  flex: none;
 }
 .place-pick {
   display: grid;
@@ -1071,12 +1066,6 @@ main {
   display: block;
   font-size: 15px;
   font-weight: 600;
-}
-.set small {
-  display: block;
-  color: var(--text-sub);
-  font-size: 12px;
-  margin-top: 2px;
 }
 .seg {
   display: flex;
@@ -1220,10 +1209,6 @@ main {
     border-left: 0;
     padding-left: 4px;
   }
-  .sset {
-    grid-template-columns: 200px minmax(0, 1fr);
-    gap: 32px;
-  }
   .stage img {
     width: 100px;
     height: 100px;
@@ -1260,8 +1245,7 @@ main {
     border-bottom: 1px solid var(--line);
     padding: 12px 20px;
   }
-  .lights,
-  .side .foot {
+  .lights {
     display: none;
   }
   .brand {
@@ -1301,10 +1285,6 @@ main {
   }
   .today .drink {
     width: 100%;
-  }
-  .sset {
-    grid-template-columns: 1fr;
-    gap: 16px;
   }
   .hero {
     min-height: 400px;
@@ -1454,6 +1434,9 @@ button:disabled {
   font-size: 13px;
   font-weight: 500;
 }
+.plain-action:disabled {
+  opacity: 0.5;
+}
 /* ── 설정: 목표 바꾸기 패널, 한 잔 용량 직접 입력 ── */
 .goal-actions {
   display: flex;
@@ -1538,12 +1521,6 @@ button:disabled {
   font-size: 14px;
   color: var(--text-sub);
   font-weight: 600;
-}
-.goal-edit .note {
-  margin: 14px 0 18px;
-  font-size: 13px;
-  color: var(--text-sub);
-  line-height: 1.6;
 }
 .goal-edit .row-btns {
   display: flex;

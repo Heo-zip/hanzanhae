@@ -13,7 +13,8 @@ import type {
   WaterStatistics,
   DailyStatistics,
   GardenSettings,
-  ReminderSettings
+  ReminderSettings,
+  DrinkActionInput
 } from '../../shared/appState'
 import { validReminderSettings } from '../reminders/policy'
 
@@ -23,7 +24,7 @@ export class StaleStateError extends Error {}
 export class NoRecordsError extends Error {}
 export class TotalBelowZeroError extends Error {}
 
-const SCHEMA_VERSION = 8
+const SCHEMA_VERSION = 9
 
 // 앱의 하루 기준인 한국 날짜를 YYYY-MM-DD로 만든다.
 const seoulDay = new Intl.DateTimeFormat('en-CA', {
@@ -161,6 +162,24 @@ export class AppDatabase {
           COMMIT;
         `)
       }
+      if (version < 9) {
+        this.db.exec(`
+          BEGIN IMMEDIATE;
+          ALTER TABLE goal_sessions ADD COLUMN target_count INTEGER CHECK(target_count IS NULL OR target_count > 0);
+          CREATE TABLE drink_actions (
+            id INTEGER PRIMARY KEY,
+            request_id TEXT NOT NULL UNIQUE,
+            goal_id INTEGER NOT NULL REFERENCES goal_sessions(id),
+            day TEXT NOT NULL,
+            recorded_at TEXT NOT NULL,
+            cancelled_at TEXT
+          );
+          CREATE INDEX drink_actions_by_day ON drink_actions(day, cancelled_at);
+          CREATE TABLE drink_action_receipts (request_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
+          PRAGMA user_version = 9;
+          COMMIT;
+        `)
+      }
       // 마지막 저장 이후는 앱이 꺼져 있던 시간으로 보수적으로 계산한다.
       this.settleVitality('offline')
     } catch (error) {
@@ -222,10 +241,12 @@ export class AppDatabase {
   readState(): AppState {
     const settings = this.db.prepare('SELECT cup_ml FROM app_settings WHERE id = 1').get()
     const goal = this.db
-      .prepare('SELECT id, target_ml FROM goal_sessions WHERE stopped_at IS NULL')
+      .prepare('SELECT id, target_ml, target_count FROM goal_sessions WHERE stopped_at IS NULL')
       .get()
     const plant = this.db.prepare('SELECT stage FROM plant_state WHERE id = 1').get()
-    const goalCount = Number(this.db.prepare('SELECT COUNT(*) AS n FROM goal_sessions').get()?.n)
+    const goalSessionCount = Number(
+      this.db.prepare('SELECT COUNT(*) AS n FROM goal_sessions').get()?.n
+    )
     if (!settings) {
       const receipts = Number(
         this.db.prepare('SELECT COUNT(*) AS n FROM mutation_receipts').get()?.n
@@ -243,7 +264,7 @@ export class AppDatabase {
       const growth = Number(this.db.prepare('SELECT COUNT(*) AS n FROM growth_events').get()?.n)
       const vitality = Number(this.db.prepare('SELECT COUNT(*) AS n FROM plant_vitality').get()?.n)
       if (
-        goalCount !== 0 ||
+        goalSessionCount !== 0 ||
         plant ||
         receipts !== 0 ||
         changes !== 0 ||
@@ -262,7 +283,7 @@ export class AppDatabase {
       cupMl <= 0 ||
       !plant ||
       plant.stage !== 'seedling' ||
-      goalCount < 1
+      goalSessionCount < 1
     ) {
       throw new Error('유효하지 않은 설정 데이터')
     }
@@ -286,13 +307,34 @@ export class AppDatabase {
     const todayMl = adjustment + todayRecords.reduce((total, record) => total + record.amountMl, 0)
     if (!Number.isSafeInteger(todayMl) || todayMl < 0) throw new Error('유효하지 않은 오늘 총량')
     const plantStatus = this.readPlant()
-    if (!goal) return { status: 'goal-stopped', cupMl, todayMl, todayRecords, day, ...plantStatus }
+    const actions = this.db
+      .prepare(
+        'SELECT id FROM drink_actions WHERE day = ? AND cancelled_at IS NULL ORDER BY recorded_at DESC, id DESC'
+      )
+      .all(day)
+    const todayCount = actions.length
+    const latestDrinkId = actions.length ? Number(actions[0].id) : null
+    if (!goal || goal.target_count === null)
+      return {
+        status: 'goal-stopped',
+        cupMl,
+        todayMl,
+        todayRecords,
+        day,
+        todayCount,
+        latestDrinkId,
+        ...plantStatus
+      }
     const goalMl = Number(goal.target_ml)
-    if (!Number.isSafeInteger(goalMl) || goalMl <= 0) throw new Error('유효하지 않은 목표')
+    const goalCount = Number(goal.target_count)
+    if (!Number.isSafeInteger(goalMl) || goalMl <= 0 || !positive(goalCount))
+      throw new Error('유효하지 않은 목표')
     return {
       status: 'ready',
       goalId: Number(goal.id),
-      goalMl,
+      goalCount,
+      todayCount,
+      latestDrinkId,
       cupMl,
       todayMl,
       todayRecords,
@@ -355,8 +397,8 @@ export class AppDatabase {
     goalStartedAt: string | null
     latestRecordAt: string | null
     lastNotifiedAt: string | null
-    todayMl: number
-    goalMl: number | null
+    todayCount: number
+    goalCount: number | null
     vitality: number
   } {
     const settings = this.readReminderSettings()
@@ -372,8 +414,8 @@ export class AppDatabase {
         goalStartedAt: null,
         latestRecordAt: null,
         lastNotifiedAt,
-        todayMl: 0,
-        goalMl: null,
+        todayCount: 0,
+        goalCount: null,
         vitality: 100
       }
     const goal = this.db
@@ -381,15 +423,15 @@ export class AppDatabase {
       .get(state.goalId)
     if (!goal || typeof goal.started_at !== 'string') throw new Error('활성 목표가 없어요')
     const latest = this.db
-      .prepare('SELECT MAX(recorded_at) AS latest FROM water_records WHERE cancelled_at IS NULL')
+      .prepare('SELECT MAX(recorded_at) AS latest FROM drink_actions WHERE cancelled_at IS NULL')
       .get()
     return {
       settings,
       goalStartedAt: goal.started_at,
       latestRecordAt: latest?.latest == null ? null : String(latest.latest),
       lastNotifiedAt,
-      todayMl: state.todayMl,
-      goalMl: state.goalMl,
+      todayCount: state.todayCount,
+      goalCount: state.goalCount,
       vitality: state.plantVitality
     }
   }
@@ -442,7 +484,7 @@ export class AppDatabase {
     const currentDay = today(this.now())
     const goals = this.db
       .prepare(
-        'SELECT id, target_ml, started_at, stopped_at FROM goal_sessions ORDER BY started_at DESC, id DESC'
+        'SELECT id, target_ml, target_count, started_at, stopped_at FROM goal_sessions ORDER BY started_at DESC, id DESC'
       )
       .all()
       .map((row) => {
@@ -456,7 +498,12 @@ export class AppDatabase {
           (end && !Number.isFinite(end.getTime()))
         )
           throw new Error('유효하지 않은 목표 이력')
-        return { target, start: today(start), end: end ? today(end) : null }
+        return {
+          target,
+          targetCount: row.target_count === null ? null : Number(row.target_count),
+          start: today(start),
+          end: end ? today(end) : null
+        }
       })
     const totals = new Map<string, number>()
     const rows = this.db
@@ -475,6 +522,13 @@ export class AppDatabase {
       if (!Number.isSafeInteger(total) || total < 0) throw new Error('유효하지 않은 통계 총량')
       totals.set(String(row.day), total)
     }
+    const counts = new Map<string, number>()
+    for (const row of this.db
+      .prepare(
+        'SELECT day, COUNT(*) AS total FROM drink_actions WHERE cancelled_at IS NULL GROUP BY day'
+      )
+      .all())
+      counts.set(String(row.day), Number(row.total))
     const offset = (day: string, amount: number): string => {
       const date = new Date(`${day}T00:00:00.000Z`)
       date.setUTCDate(date.getUTCDate() + amount)
@@ -483,15 +537,23 @@ export class AppDatabase {
     const daily = (day: string): DailyStatistics => {
       const goal = goals.find((item) => item.start <= day && (item.end === null || item.end >= day))
       const totalMl = totals.get(day) ?? 0
+      const drinkCount = counts.get(day) ?? 0
       return {
         day,
         totalMl,
-        goalMl: goal?.target ?? null,
-        achieved: goal ? totalMl >= goal.target : false
+        goalMl: goal?.targetCount === null ? goal.target : null,
+        goalCount: goal?.targetCount ?? null,
+        drinkCount,
+        achieved:
+          goal?.targetCount != null
+            ? drinkCount >= goal.targetCount
+            : goal
+              ? totalMl >= goal.target
+              : false
       }
     }
     const days = Array.from({ length: 7 }, (_, index) => daily(offset(currentDay, index - 6)))
-    const tracked = days.filter((day) => day.goalMl !== null)
+    const tracked = days.filter((day) => day.goalMl !== null || day.goalCount !== null)
     const averageMl = tracked.length
       ? Math.round(tracked.reduce((sum, day) => sum + day.totalMl / tracked.length, 0))
       : null
@@ -516,12 +578,12 @@ export class AppDatabase {
   }
 
   completeSetup(input: SetupInput): AppState {
-    const { requestId, goalMl, cupMl } = input
+    const { requestId, goalCount, cupMl } = input
     if (
       typeof requestId !== 'string' ||
       requestId.length < 1 ||
       requestId.length > 128 ||
-      !positive(goalMl) ||
+      !positive(goalCount) ||
       !positive(cupMl)
     )
       throw new InvalidSetupError()
@@ -531,21 +593,23 @@ export class AppDatabase {
         .prepare('SELECT goal_ml, cup_ml FROM mutation_receipts WHERE request_id = ?')
         .get(requestId)
       if (previous) {
-        if (Number(previous.goal_ml) !== goalMl || Number(previous.cup_ml) !== cupMl)
+        if (Number(previous.goal_ml) !== goalCount || Number(previous.cup_ml) !== cupMl)
           throw new InvalidSetupError()
       } else {
         if (this.readState().status !== 'setup-required') throw new AlreadyConfiguredError()
         this.db.prepare('INSERT INTO app_settings VALUES (1, ?, 1)').run(cupMl)
         this.db
-          .prepare('INSERT INTO goal_sessions (target_ml, started_at) VALUES (?, ?)')
-          .run(goalMl, this.now().toISOString())
+          .prepare(
+            'INSERT INTO goal_sessions (target_ml, target_count, started_at) VALUES (?, ?, ?)'
+          )
+          .run(cupMl, goalCount, this.now().toISOString())
         this.db.prepare("INSERT INTO plant_state VALUES (1, 'seedling')").run()
         this.db
           .prepare('INSERT INTO plant_vitality VALUES (1, 80, ?)')
           .run(this.now().toISOString())
         this.db
           .prepare('INSERT INTO mutation_receipts VALUES (?, ?, ?)')
-          .run(requestId, goalMl, cupMl)
+          .run(requestId, goalCount, cupMl)
       }
       const currentState = this.readState()
       // 같은 요청의 재전송은 최초 성공 결과를 돌려주며 현재 상태를 덮어쓰지 않는다.
@@ -555,7 +619,9 @@ export class AppDatabase {
             goalId: Number(
               this.db.prepare('SELECT id FROM goal_sessions ORDER BY id LIMIT 1').get()?.id
             ),
-            goalMl,
+            goalCount,
+            todayCount: 0,
+            latestDrinkId: null,
             cupMl,
             todayMl: 0,
             todayRecords: [],
@@ -609,17 +675,78 @@ export class AppDatabase {
             'INSERT INTO water_records (request_id, goal_id, amount_ml, recorded_at, day) VALUES (?, ?, ?, ?, ?)'
           )
           .run(input.requestId, state.goalId, state.cupMl, now.toISOString(), actualDay)
-        const after = state.todayMl + state.cupMl
-        const reached = state.todayMl < state.goalMl && after >= state.goalMl
-        const extraMl = Math.max(0, after - Math.max(state.todayMl, state.goalMl))
-        const extraPoints = Math.min(1_000_000, Math.round((extraMl / state.goalMl) * 1000))
-        const points = (reached ? 1000 : 0) + extraPoints
+        // 임시 기준: 기록한 1ml당 성장 1점. 횟수 목표와는 독립적이다.
+        const points = Math.min(1_000_000, state.cupMl)
         if (points > 0)
           this.db
             .prepare('INSERT INTO growth_events VALUES (?, ?)')
             .run(inserted.lastInsertRowid, points)
         this.settleVitality('online')
         this.db.prepare('UPDATE plant_vitality SET value = MIN(100, value + 15) WHERE id = 1').run()
+        created = true
+      }
+      const state = this.readState()
+      this.db.exec('COMMIT')
+      return { state, created }
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
+  recordDrinkAction(input: DrinkActionInput): { state: AppState; created: boolean } {
+    if (
+      !input ||
+      typeof input.requestId !== 'string' ||
+      input.requestId.length < 1 ||
+      input.requestId.length > 128 ||
+      !positive(input.expectedGoalId) ||
+      typeof input.day !== 'string' ||
+      (input.kind !== 'add' && input.kind !== 'undo') ||
+      (input.kind === 'undo' && !positive(input.recordId ?? 0))
+    )
+      throw new InvalidSetupError()
+    const payload = JSON.stringify([
+      input.kind,
+      input.expectedGoalId,
+      input.day,
+      input.recordId ?? null
+    ])
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      const receipt = this.db
+        .prepare('SELECT payload FROM drink_action_receipts WHERE request_id = ?')
+        .get(input.requestId)
+      let created = false
+      if (receipt) {
+        if (receipt.payload !== payload) throw new InvalidSetupError()
+      } else {
+        const state = this.readState()
+        if (
+          state.status !== 'ready' ||
+          state.goalId !== input.expectedGoalId ||
+          state.day !== input.day ||
+          today(this.now()) !== input.day
+        )
+          throw new StaleStateError()
+        if (input.kind === 'add') {
+          this.db
+            .prepare(
+              'INSERT INTO drink_actions (request_id, goal_id, day, recorded_at) VALUES (?, ?, ?, ?)'
+            )
+            .run(input.requestId, state.goalId, state.day, this.now().toISOString())
+        } else {
+          if (state.latestDrinkId !== input.recordId) throw new StaleStateError()
+          const changed = this.db
+            .prepare(
+              'UPDATE drink_actions SET cancelled_at = ? WHERE id = ? AND day = ? AND cancelled_at IS NULL'
+            )
+            .run(this.now().toISOString(), input.recordId!, state.day)
+          if (changed.changes !== 1) throw new StaleStateError()
+        }
+        this.db
+          .prepare('INSERT INTO drink_action_receipts VALUES (?, ?)')
+          .run(input.requestId, payload)
         created = true
       }
       const state = this.readState()
@@ -732,7 +859,7 @@ export class AppDatabase {
           ? !positive(input.expectedGoalId)
           : input.kind === 'goal'
             ? !(
-                positive(input.goalMl) &&
+                positive(input.goalCount) &&
                 nonnegative(input.todayMl) &&
                 nonnegative(input.expectedTodayMl) &&
                 (input.expectedGoalId === null || positive(input.expectedGoalId)) &&
@@ -768,13 +895,15 @@ export class AppDatabase {
           )
             throw new StaleStateError()
           const now = this.now().toISOString()
-          if (state.status === 'ready')
-            this.db
-              .prepare('UPDATE goal_sessions SET stopped_at = ? WHERE id = ?')
-              .run(now, state.goalId)
+          // 기존 ml 목표도 함께 종료하되 과거 기록과 성장 이력은 그대로 둔다.
+          this.db
+            .prepare('UPDATE goal_sessions SET stopped_at = ? WHERE stopped_at IS NULL')
+            .run(now)
           const result = this.db
-            .prepare('INSERT INTO goal_sessions (target_ml, started_at) VALUES (?, ?)')
-            .run(input.goalMl, now)
+            .prepare(
+              'INSERT INTO goal_sessions (target_ml, target_count, started_at) VALUES (?, ?, ?)'
+            )
+            .run(state.cupMl, input.goalCount, now)
           this.db
             .prepare(
               'INSERT INTO daily_adjustments (goal_id, day, amount_ml, created_at) VALUES (?, ?, ?, ?)'

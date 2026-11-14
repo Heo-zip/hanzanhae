@@ -1,5 +1,7 @@
 # 검증 시나리오
 
+> 아래 기존 시나리오는 변경 전 기준이다. 현재 횟수·텀블러 분리, 이전 데이터 보존과 UI 검증은 [횟수 목표 결과](features/drink-count-goal-REPORT.md)를 따른다.
+
 > 아래는 구현한 창·최초 설정과 앞으로 구현할 제품 기능의 검증 기준이다. SQLite 저장 기반은 `npm run test:storage`, 정원 좌표 계산은 `npm run test:position`, 알림 조건·서비스는 `npm run test:reminders`, 업데이트 흐름은 `npm run test:update`로 확인한다.
 
 ## 변경 후 기본 확인

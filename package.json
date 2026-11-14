@@ -8,7 +8,7 @@
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
-    "test:storage": "node --test tests/storage.test.mjs",
+    "test:storage": "node --test tests/storage.test.mjs tests/drink-count.test.mjs",
     "test:position": "node --test tests/garden-position.test.mjs",
     "test:reminders": "node --test tests/reminder-policy.test.mjs tests/reminder-service.test.mjs",
     "test:update": "node --test tests/auto-update.test.mjs",

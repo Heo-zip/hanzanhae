@@ -20,8 +20,8 @@ const sample = {
   goalStartedAt: '2026-11-13T00:00:00.000Z',
   latestRecordAt: null,
   lastNotifiedAt: null,
-  todayMl: 0,
-  goalMl: 1500,
+  todayCount: 0,
+  goalCount: 8,
   now: new Date('2026-11-13T02:00:00.000Z')
 }
 
@@ -35,8 +35,8 @@ test('활성 목표의 시작이나 유효한 물 기록과 마지막 알림 이
 
 test('꺼진 알림, 목표 없음, 목표 달성 상태에서는 알리지 않는다', () => {
   assert.equal(shouldRemind({ ...sample, settings: { ...settings, enabled: false } }), false)
-  assert.equal(shouldRemind({ ...sample, goalMl: null }), false)
-  assert.equal(shouldRemind({ ...sample, todayMl: 1500 }), false)
+  assert.equal(shouldRemind({ ...sample, goalCount: null }), false)
+  assert.equal(shouldRemind({ ...sample, todayCount: 8 }), false)
   assert.equal(shouldRemind({ ...sample, goalStartedAt: null }), false)
   assert.equal(shouldRemind({ ...sample, latestRecordAt: '잘못된 시각' }), false)
 })

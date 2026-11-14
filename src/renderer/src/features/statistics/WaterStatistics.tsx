@@ -13,12 +13,15 @@ function dayDescription(day: DailyStatistics): string {
     weekday: 'short'
   }).format(new Date(`${day.day}T12:00:00Z`))
   const goal =
-    day.goalMl === null
-      ? '목표 없음'
+    day.goalCount === null
+      ? day.goalMl === null
+        ? '목표 없음'
+        : '이전 용량 목표'
       : day.achieved
         ? '목표 달성'
-        : `목표까지 ${format(day.goalMl - day.totalMl)}ml 남음`
-  return `${date}, ${format(day.totalMl)}ml, ${goal}`
+        : `목표까지 ${format(day.goalCount - day.drinkCount)}회 남음`
+  const count = day.goalCount === null ? '횟수 기록 없음' : `${format(day.drinkCount)}회`
+  return `${date}, ${count}, ${format(day.totalMl)}ml, ${goal}`
 }
 
 export function WeekChart({ days }: { days: DailyStatistics[] }): React.JSX.Element {
@@ -30,7 +33,7 @@ export function WeekChart({ days }: { days: DailyStatistics[] }): React.JSX.Elem
     bottom = height - 26
   const step = (width - left) / 7,
     barWidth = Math.min(26, step * 0.42)
-  const max = Math.max(1, ...days.flatMap((day) => [day.totalMl, (day.goalMl ?? 0) * 1.3]))
+  const max = Math.max(1, ...days.flatMap((day) => [day.drinkCount, (day.goalCount ?? 0) * 1.3]))
   const roughStep = max / 4
   const magnitude = 10 ** Math.floor(Math.log10(roughStep))
   const unit = Math.max(
@@ -44,7 +47,7 @@ export function WeekChart({ days }: { days: DailyStatistics[] }): React.JSX.Elem
     <div className="chart">
       <svg
         role="group"
-        aria-label="최근 7일 마신 물과 날짜별 목표"
+        aria-label="최근 7일 물 마신 횟수와 날짜별 목표"
         viewBox={`0 0 ${width} ${height}`}
       >
         {ticks.map((value, index) => {
@@ -85,18 +88,18 @@ export function WeekChart({ days }: { days: DailyStatistics[] }): React.JSX.Elem
               />
               <rect
                 x={x}
-                y={y(day.totalMl)}
+                y={y(day.drinkCount)}
                 width={barWidth}
-                height={bottom - y(day.totalMl)}
+                height={bottom - y(day.drinkCount)}
                 rx="4"
                 fill={index === 6 ? 'var(--brand)' : 'var(--brand-mid)'}
               />
-              {day.goalMl !== null && (
+              {day.goalCount !== null && (
                 <line
                   x1={left + step * index}
                   x2={left + step * (index + 1)}
-                  y1={y(day.goalMl)}
-                  y2={y(day.goalMl)}
+                  y1={y(day.goalCount)}
+                  y2={y(day.goalCount)}
                   stroke="var(--text-sub)"
                   strokeWidth="1.2"
                   strokeDasharray="4 4"
@@ -130,7 +133,7 @@ export function WeekChart({ days }: { days: DailyStatistics[] }): React.JSX.Elem
             right: selected >= 5 ? 0 : undefined,
             transform:
               selected <= 1 || selected >= 5 ? 'translateY(-100%)' : 'translate(-50%, -100%)',
-            top: `${Math.max(15, (y(chosen.totalMl) / height) * 100)}%`
+            top: `${Math.max(15, (y(chosen.drinkCount) / height) * 100)}%`
           }}
         >
           <strong>{dayDescription(chosen).split(', ')[0]}</strong>
@@ -151,12 +154,14 @@ export function WeekCups({ days }: { days: DailyStatistics[] }): React.JSX.Eleme
           key={day.day}
           aria-label={dayDescription(day)}
         >
-          <span className="ml num">{format(day.totalMl)}ml</span>
+          <span className="ml num">
+            {day.goalCount === null ? '—' : `${format(day.drinkCount)}회`}
+          </span>
           <span style={{ position: 'relative' }}>
             <span className="glass" aria-hidden="true">
               <i
                 style={{
-                  height: `${day.goalMl ? Math.min(100, (day.totalMl / day.goalMl) * 100) : 0}%`
+                  height: `${day.goalCount ? Math.min(100, (day.drinkCount / day.goalCount) * 100) : 0}%`
                 }}
               />
             </span>

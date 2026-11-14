@@ -10,7 +10,8 @@ import type {
   RecordCupResult,
   CancelWaterInput,
   CancelWaterResult,
-  StatisticsResult
+  StatisticsResult,
+  DrinkActionInput
 } from '../../shared/appState'
 import {
   AlreadyConfiguredError,
@@ -126,6 +127,24 @@ export function initializeStorageIpc(
       const result = getDatabase().recordCup(input)
       if (result.created) broadcast('app:state-changed', 'app:water-recorded')
       return { ok: true, ...result }
+    } catch (error) {
+      if (error instanceof InvalidSetupError) return { ok: false, code: 'VALIDATION_ERROR' }
+      if (error instanceof StaleStateError) return { ok: false, code: 'STALE_STATE' }
+      return { ok: false, code: 'STORAGE_ERROR' }
+    }
+  })
+  ipcMain.handle('app:record-drink-action', (event, input: DrinkActionInput): AppResult => {
+    if (
+      !trusted(event) ||
+      event.sender !== getDashboard()?.webContents ||
+      !input ||
+      typeof input !== 'object'
+    )
+      return { ok: false, code: 'VALIDATION_ERROR' }
+    try {
+      const result = getDatabase().recordDrinkAction(input)
+      if (result.created) broadcast('app:state-changed')
+      return { ok: true, state: result.state }
     } catch (error) {
       if (error instanceof InvalidSetupError) return { ok: false, code: 'VALIDATION_ERROR' }
       if (error instanceof StaleStateError) return { ok: false, code: 'STALE_STATE' }

@@ -22,7 +22,7 @@ function Onboarding({ onComplete }: { onComplete: () => Promise<void> }): React.
 
   function next(): void {
     if ((step === 1 && !isMlInput(goal)) || (step === 2 && !isMlInput(cup))) {
-      setError('1ml 이상, 숫자로 입력해 주세요')
+      setError(step === 1 ? '1회 이상, 숫자로 입력해 주세요' : '1ml 이상, 숫자로 입력해 주세요')
       return
     }
     setError('')
@@ -43,7 +43,7 @@ function Onboarding({ onComplete }: { onComplete: () => Promise<void> }): React.
     try {
       const response = await window.hanzanhae.completeSetup({
         requestId: requestId.current,
-        goalMl: Number(goal),
+        goalCount: Number(goal),
         cupMl: Number(cup)
       })
       if (response.ok || response.code === 'ALREADY_CONFIGURED') await onComplete()
@@ -59,14 +59,15 @@ function Onboarding({ onComplete }: { onComplete: () => Promise<void> }): React.
     value: string,
     setter: (value: string) => void,
     increment: number,
-    label: string
+    label: string,
+    unit: string
   ): React.JSX.Element => (
     <div className={`amount-field ${error ? 'bad' : ''}`}>
       <button
         type="button"
         className="step-btn"
         onClick={() => adjust(value, setter, -increment)}
-        aria-label={`${increment}ml 줄이기`}
+        aria-label={`${increment}${unit} 줄이기`}
       >
         −
       </button>
@@ -87,12 +88,12 @@ function Onboarding({ onComplete }: { onComplete: () => Promise<void> }): React.
         }}
         autoFocus
       />
-      <span className="unit">ml</span>
+      <span className="unit">{unit}</span>
       <button
         type="button"
         className="step-btn"
         onClick={() => adjust(value, setter, increment)}
-        aria-label={`${increment}ml 늘리기`}
+        aria-label={`${increment}${unit} 늘리기`}
       >
         +
       </button>
@@ -130,28 +131,28 @@ function Onboarding({ onComplete }: { onComplete: () => Promise<void> }): React.
             {step === 1 && (
               <>
                 <span className="eyebrow">1 / 2</span>
-                <h1>하루에 물을 얼마나 마실까요?</h1>
+                <h1>하루에 물을 몇 번 마실까요?</h1>
                 <p className="lead">
-                  하루 목표를 채우면 화분이 자라요.
+                  하루에 물을 마실 횟수를 정해 주세요.
                   <br />
                   설정에서 언제든 바꿀 수 있어요.
                 </p>
-                {amountField('goal', goal, setGoal, 100, '하루 목표(ml)')}
+                {amountField('goal', goal, setGoal, 1, '하루 목표 횟수', '회')}
                 <div
                   id="goal-message"
                   className={`field-msg ${error ? 'bad' : ''}`}
                   role={error ? 'alert' : undefined}
                 >
-                  {error || 'ml 단위로 입력해 주세요'}
+                  {error || '하루에 마실 횟수를 입력해 주세요'}
                 </div>
               </>
             )}
             {step === 2 && (
               <>
                 <span className="eyebrow">2 / 2</span>
-                <h1>한 번 마실 때 얼마나 마시나요?</h1>
+                <h1>텀블러 용량을 알려주세요</h1>
                 <p className="lead">
-                  물뿌리개를 한 번 누르면 이만큼 기록돼요.
+                  텀블러를 비우고 물뿌리개를 누르면 이만큼 기록돼요.
                   <br />
                   평소 쓰는 컵이나 텀블러를 떠올려 주세요.
                 </p>
@@ -163,17 +164,14 @@ function Onboarding({ onComplete }: { onComplete: () => Promise<void> }): React.
                   >
                     <i style={{ height: '85%' }} />
                   </span>
-                  {amountField('cup', cup, setCup, 50, '한 잔 용량(ml)')}
+                  {amountField('cup', cup, setCup, 50, '텀블러 용량(ml)', 'ml')}
                 </div>
                 <div
                   id="cup-message"
                   className={`field-msg ${error ? 'bad' : ''}`}
                   role={error ? 'alert' : undefined}
                 >
-                  {error ||
-                    (isMlInput(cup)
-                      ? `하루 목표까지 약 ${Math.ceil(Number(goal) / Number(cup))}잔이에요`
-                      : 'ml 단위로 입력해 주세요')}
+                  {error || 'ml 단위로 입력해 주세요'}
                 </div>
               </>
             )}
@@ -187,11 +185,11 @@ function Onboarding({ onComplete }: { onComplete: () => Promise<void> }): React.
                 <div className="chips">
                   <span>
                     <img src={statLeft} alt="" />
-                    하루 <b className="num">{Number(goal).toLocaleString('ko-KR')}ml</b>
+                    하루 <b className="num">{Number(goal).toLocaleString('ko-KR')}회</b>
                   </span>
                   <span>
-                    <img src={statCups} alt="" />한 잔{' '}
-                    <b className="num">{Number(cup).toLocaleString('ko-KR')}ml</b>
+                    <img src={statCups} alt="" />
+                    텀블러 <b className="num">{Number(cup).toLocaleString('ko-KR')}ml</b>
                   </span>
                 </div>
                 <p className="lead">

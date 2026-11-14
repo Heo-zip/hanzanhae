@@ -100,7 +100,6 @@ export default function ReminderSettingsPanel(): React.JSX.Element {
     <section className="sset">
       <div className="sset-head">
         <h2>물 마시기 알림</h2>
-        <p>물을 오래 기록하지 않으면 화분이 조용히 알려줘요. 앱을 켜둔 동안에만 보내요.</p>
       </div>
       <div className="reminder-settings">
         {draft && (
@@ -109,7 +108,6 @@ export default function ReminderSettingsPanel(): React.JSX.Element {
               <div className="set">
                 <div>
                   <b>알림 받기</b>
-                  <small>변경 후 저장하면 적용돼요</small>
                 </div>
                 <button
                   className="switch"
@@ -123,7 +121,6 @@ export default function ReminderSettingsPanel(): React.JSX.Element {
               <div className="set">
                 <div>
                   <b>알림 간격</b>
-                  <small>마지막 기록 이후 기다리는 시간이에요</small>
                 </div>
                 <IntervalSelect
                   value={draft.intervalMinutes}
@@ -133,8 +130,7 @@ export default function ReminderSettingsPanel(): React.JSX.Element {
               </div>
               <div className="set reminder-times">
                 <div>
-                  <b>알림 시간</b>
-                  <small>한국 시간 기준이에요</small>
+                  <b>알림 시간 (한국 시간)</b>
                 </div>
                 <div className="reminder-time-fields">
                   <TimeSelect
