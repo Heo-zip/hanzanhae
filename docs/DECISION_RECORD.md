@@ -109,7 +109,7 @@
 
 ## 결정 017: macOS 개발용 알림 실행 환경
 
-- 기록일: 2026-11-14 / 상태: 개발 환경 적용, 실제 배너 확인 필요 / 근거: [개발 앱 알림 오류](features/plant-reminders-development-signature-ERROR.md).
+- 기록일: 2026-11-14 / 상태: 개발 환경 적용, 사용자 알림 동작 확인 / 근거: [개발 앱 알림 오류](features/plant-reminders-development-signature-ERROR.md).
 - `npm run dev`는 macOS에서만 원본 Electron을 복사해 `com.heozip.hanzanhae.dev`로 로컬 ad-hoc 서명한다. 설치 앱과 권한 항목을 구분하고 사용자 데이터 경로는 유지한다.
 - 이유: 기본 Electron의 앱 서명 검증과 알림 요청이 실패했고, 서명·식별자를 바꾼 개발 앱은 알림 요청에 성공했다. 두 요인 중 단독 원인은 확인하지 못했다.
-- 제한: 시스템 알림 허용 여부, 다른 Mac의 동작과 실제 배너 표시는 별도로 확인한다. 배포용 Developer ID 서명·공증이 아니다.
+- 제한: 시스템 알림 허용 여부와 다른 Mac의 동작은 별도로 확인한다. 배포용 Developer ID 서명·공증이 아니다.
