@@ -101,8 +101,12 @@ export type ReminderSettingsResult =
   | {
       ok: true
       settings: ReminderSettings
-      activation?: 'shown' | 'failed' | 'unsupported' | 'pending'
+      activation?: 'shown' | 'failed' | 'development-failed' | 'unsupported' | 'pending'
     }
   | { ok: false; code: 'VALIDATION_ERROR' | 'STORAGE_ERROR' }
 export type ReminderTestResult =
-  { ok: true } | { ok: false; code: 'VALIDATION_ERROR' | 'UNSUPPORTED' | 'NOTIFICATION_ERROR' }
+  | { ok: true }
+  | {
+      ok: false
+      code: 'VALIDATION_ERROR' | 'UNSUPPORTED' | 'NOTIFICATION_ERROR' | 'DEV_NOTIFICATION_ERROR'
+    }

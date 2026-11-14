@@ -24,12 +24,16 @@ export function initializeReminders(
 
   function showNotification(body: string): Promise<ReminderTestResult> {
     if (!Notification.isSupported()) return Promise.resolve({ ok: false, code: 'UNSUPPORTED' })
+    const failureCode =
+      process.platform === 'darwin' && !app.isPackaged
+        ? 'DEV_NOTIFICATION_ERROR'
+        : 'NOTIFICATION_ERROR'
     return new Promise((resolve) => {
       let notification: Notification
       try {
         notification = new Notification({ title: '한잔해 🌱', body })
       } catch {
-        resolve({ ok: false, code: 'NOTIFICATION_ERROR' })
+        resolve({ ok: false, code: failureCode })
         return
       }
       openNotifications.add(notification)
@@ -46,15 +50,15 @@ export function initializeReminders(
         if (!result.ok) openNotifications.delete(notification)
         resolve(result)
       }
-      const timeout = setTimeout(() => finish({ ok: false, code: 'NOTIFICATION_ERROR' }), 60_000)
+      const timeout = setTimeout(() => finish({ ok: false, code: failureCode }), 60_000)
       notification.once('show', () => finish({ ok: true }))
-      notification.once('failed', () => finish({ ok: false, code: 'NOTIFICATION_ERROR' }))
+      notification.once('failed', () => finish({ ok: false, code: failureCode }))
       notification.once('close', () => openNotifications.delete(notification))
       notification.on('click', showDashboard)
       try {
         notification.show()
       } catch {
-        finish({ ok: false, code: 'NOTIFICATION_ERROR' })
+        finish({ ok: false, code: failureCode })
       }
     })
   }
@@ -113,7 +117,12 @@ export function initializeReminders(
               return {
                 ok: true,
                 settings: saved,
-                activation: result.code === 'UNSUPPORTED' ? 'unsupported' : 'failed'
+                activation:
+                  result.code === 'UNSUPPORTED'
+                    ? 'unsupported'
+                    : result.code === 'DEV_NOTIFICATION_ERROR'
+                      ? 'development-failed'
+                      : 'failed'
               }
             try {
               pendingShownAt = new Date()
