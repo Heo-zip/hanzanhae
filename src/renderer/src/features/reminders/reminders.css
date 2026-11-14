@@ -1,4 +1,4 @@
-.reminder-settings select,
+.reminder-interval-trigger,
 .reminder-time-fields input {
   min-width: 0;
   border: 1px solid #e1e8e2;
@@ -7,6 +7,50 @@
   padding: 8px;
   color: inherit;
   font: inherit;
+}
+
+.reminder-interval-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-width: 105px;
+  cursor: pointer;
+}
+
+.reminder-interval-trigger:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.reminder-interval-list {
+  position: fixed;
+  z-index: 1000;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid #e1e8e2;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 8px 24px #21392a26;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.reminder-interval-option {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.reminder-interval-option.is-active {
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+}
+
+.reminder-interval-option[aria-selected='true'] {
+  font-weight: 700;
 }
 
 .reminder-time-fields {
