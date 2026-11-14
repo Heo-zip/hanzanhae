@@ -4,7 +4,8 @@ import type {
   SettingsInput,
   RecordCupInput,
   CancelWaterInput,
-  GardenSettingsChange
+  GardenSettingsChange,
+  ReminderSettings
 } from '../shared/appState'
 
 // 정원 창에 필요한 클릭 통과와 드래그 기능만 공개한다. 원시 IPC는 노출하지 않는다.
@@ -35,6 +36,10 @@ contextBridge.exposeInMainWorld('hanzanhae', {
   updateGardenSettings: (change: GardenSettingsChange) =>
     ipcRenderer.invoke('garden:update-settings', change),
   getStatistics: () => ipcRenderer.invoke('app:get-statistics'),
+  getReminderSettings: () => ipcRenderer.invoke('reminder:get-settings'),
+  updateReminderSettings: (settings: ReminderSettings) =>
+    ipcRenderer.invoke('reminder:update-settings', settings),
+  testReminder: () => ipcRenderer.invoke('reminder:test'),
   completeSetup: (input: SetupInput) => ipcRenderer.invoke('app:complete-setup', input),
   updateSettings: (input: SettingsInput) => ipcRenderer.invoke('app:update-settings', input),
   recordCup: (input: RecordCupInput) => ipcRenderer.invoke('app:record-cup', input),

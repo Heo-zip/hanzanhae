@@ -10,6 +10,7 @@ import {
 } from './windows/gardenWindow'
 import { initializeGardenControls } from './gardenControls'
 import { initializeStorageIpc } from './storage/ipc'
+import { initializeReminders } from './reminders/service'
 
 let dashboardWindow: BrowserWindow | null = null
 
@@ -98,6 +99,7 @@ app.whenReady().then(() => {
   createWindow()
   showGardenWindow()
   initializeGardenControls(showDashboard)
+  initializeReminders(() => dashboardWindow, showDashboard)
 
   app.on('activate', function () {
     // 정원 창이 남아 있어도 Dock 아이콘으로 닫힌 대시보드를 다시 연다.

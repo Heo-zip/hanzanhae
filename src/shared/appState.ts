@@ -90,3 +90,19 @@ export type GardenSettingsChange =
   { kind: 'placement'; placement: GardenPreset } | { kind: 'alwaysOnTop'; alwaysOnTop: boolean }
 export type GardenSettingsResult =
   { ok: true; settings: GardenSettings } | { ok: false; code: 'VALIDATION_ERROR' | 'STORAGE_ERROR' }
+
+export type ReminderSettings = {
+  enabled: boolean
+  intervalMinutes: number
+  startTime: string
+  endTime: string
+}
+export type ReminderSettingsResult =
+  | {
+      ok: true
+      settings: ReminderSettings
+      activation?: 'shown' | 'failed' | 'unsupported' | 'pending'
+    }
+  | { ok: false; code: 'VALIDATION_ERROR' | 'STORAGE_ERROR' }
+export type ReminderTestResult =
+  { ok: true } | { ok: false; code: 'VALIDATION_ERROR' | 'UNSUPPORTED' | 'NOTIFICATION_ERROR' }
