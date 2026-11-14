@@ -13,6 +13,11 @@ contextBridge.exposeInMainWorld('gardenWindow', {
   setMousePassthrough(ignore: boolean): void {
     if (typeof ignore === 'boolean') ipcRenderer.send('garden:set-mouse-passthrough', ignore)
   },
+  onMouseCaptureReady: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('garden:mouse-capture-ready', listener)
+    return () => ipcRenderer.removeListener('garden:mouse-capture-ready', listener)
+  },
   onDragCancelled: (callback: () => void) => {
     const listener = (): void => callback()
     ipcRenderer.on('garden:drag-cancelled', listener)
