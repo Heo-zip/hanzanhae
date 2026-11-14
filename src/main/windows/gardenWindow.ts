@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, screen } from 'electron'
+import { app, autoUpdater, BrowserWindow, ipcMain, Menu, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import type {
@@ -185,6 +185,11 @@ export function getGardenWindow(): BrowserWindow | null {
 }
 
 app.on('before-quit', () => {
+  isQuitting = true
+})
+
+// macOS 업데이트는 일반 종료보다 먼저 창을 닫으므로 숨기지 않고 닫도록 표시한다.
+autoUpdater.on('before-quit-for-update', () => {
   isQuitting = true
 })
 

@@ -41,7 +41,8 @@ IPC는 앱 안의 프로세스 간 메시지 통신이다. 외부 HTTP 서버와
 - 현재 창은 `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`로 생성한다.
 - renderer에 원시 IPC, 파일 시스템이나 임의 SQL 실행 기능을 통째로 노출하지 않는다.
 - DB는 Electron의 `app.getPath('userData')` 아래 `hanzanhae.sqlite`에 둔다. Electron에 포함된 Node.js의 `node:sqlite`를 사용하며 별도 네이티브 패키지는 추가하지 않았다.
-- 로컬 데이터는 다른 기기에 자동 동기화되지 않는다. 백업·삭제·업데이트 시 보존 방식은 별도 검증이 필요하다.
+- 로컬 데이터는 다른 기기에 자동 동기화되지 않는다. 스키마 이전 전 로컬 SQLite 백업을 보관한다. 서명된 버전 간 실제 업데이트와 데이터 보존은 별도 검증이 필요하다.
+- 앱 업데이트 확인은 메인 프로세스가 공개 GitHub Releases에 요청한다. 사용자 물 기록은 전송하지 않지만, 요청에는 네트워크 주소와 업데이트 라이브러리가 생성한 단계 배포용 무작위 식별자가 포함될 수 있다.
 - `node:sqlite`는 현재 Node.js 24에서 실험 단계이므로 Electron·Node 업그레이드 시 호환성을 다시 검증한다. 별도 네이티브 애드온을 추가하면 `npmRebuild: false`도 재검토한다.
 
 구체적인 요청은 [IPC API](ipc-api.md), 데이터 모델은 [데이터 설계](database.md)를 참고한다.

@@ -8,6 +8,8 @@
 
 정원 창은 `setMousePassthrough`로 투명 영역의 클릭 통과를 전환한다. 메인이 통과를 해제하면 `onMouseCaptureReady`로 정원 렌더러에 알려 커서 스타일을 다시 계산한다. 이 알림은 물 기록이나 창 위치를 변경하지 않는다. 실제 macOS에서 커서와 클릭 통과 확인은 남아 있다.
 
+앱 업데이트는 메뉴 막대와 메인 프로세스의 시스템 대화상자에서 처리하며 renderer에 새 IPC를 노출하지 않는다. 재시작을 승인하면 먼저 생기 저장을 확인하고, macOS 업데이트 종료 이벤트에서 창을 실제로 닫는다.
+
 알림 설정은 `getReminderSettings`, `updateReminderSettings`로 조회·저장하고 `testReminder`로 테스트한다. 모두 대시보드 메인 프레임만 호출할 수 있다. 설정은 사용 여부·1~8시간 간격·한국 시간 시작과 종료를 검증하며 `VALIDATION_ERROR` 또는 `STORAGE_ERROR`를 반환한다. 알림을 처음 켰을 때는 확인 알림을 요청하고, 저장 성공과 별도로 표시 성공·실패를 응답에 포함한다. 테스트 알림은 `UNSUPPORTED`·`NOTIFICATION_ERROR`를 추가로 반환하며 발송 간격 기록을 바꾸지 않는다. macOS 개발 앱의 요청 실패는 `DEV_NOTIFICATION_ERROR`, 설정 활성화 시에는 `development-failed`로 구분해 개발 앱의 알림 설정을 안내한다. 이는 오류가 권한 때문이라고 확정하는 코드는 아니다. 사용자가 패키지 앱의 macOS 알림 표시·클릭을 확인했고 간격 경과 후 자동 알림은 추가 확인한다.
 
 ## 원칙

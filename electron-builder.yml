@@ -23,6 +23,13 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  publish:
+    provider: github
+    owner: Heo-zip
+    repo: hanzanhae-releases
+  target:
+    - dmg
+    - zip
   entitlementsInherit: build/entitlements.mac.plist
   notarize: false
   # electron-builder 26은 한글 보조 앱 이름을 분해형으로 만들지만 CFBundleName은 조합형으로 쓴다.

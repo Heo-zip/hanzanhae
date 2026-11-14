@@ -18,6 +18,7 @@
 - 알림 간격 화살표를 정렬하고 시작·종료 시간에 24시간·1분 단위 선택창을 적용했다. 별도 데이터의 macOS Electron에서 화면, 키보드 조작, 저장과 재실행 복원을 확인했다.
 - macOS 개발 실행에서 서명된 별도 Electron을 사용하도록 바꿨다. 사용자가 macOS의 개발 앱 알림을 허용한 뒤 정상 작동을 확인했다. 장시간 후 자동 발송은 추가 확인이 필요하다. [오류 기록](features/plant-reminders-development-signature-ERROR.md)
 - 화분 커서 문제에 클릭 통과 해제 후 커서 재계산과 화분 호버 표시를 적용했다. 실제 macOS 커서와 클릭·드래그 회귀는 확인이 남았다. [오류 기록](features/garden-cursor-feedback-ERROR.md)
+- macOS 앱의 업데이트 확인·선택적 다운로드·재시작과 스키마 이전 전 로컬 DB 백업을 구현하고 격리 테스트했다. 배포 전용 공개 저장소는 생성했지만 실제 릴리스와 Developer ID 서명 앱 간 업데이트 검증은 아직 없다. [결과](features/auto-update-REPORT.md)
 
 ## 아직 구현하지 않은 기능
 

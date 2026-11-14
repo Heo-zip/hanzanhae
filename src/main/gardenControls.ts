@@ -9,7 +9,10 @@ import {
 
 let tray: Tray | null = null
 
-export function initializeGardenControls(showDashboard: () => void): void {
+export function initializeGardenControls(
+  showDashboard: () => void,
+  checkForUpdates: () => void
+): void {
   const shortcutRegistered = globalShortcut.register(GARDEN_SHORTCUT, toggleGardenWindow)
   const shortcutLabel = process.platform === 'darwin' ? '⌘ + ⌥ + ⇧ + H' : 'Ctrl + Alt + Shift + H'
 
@@ -30,6 +33,7 @@ export function initializeGardenControls(showDashboard: () => void): void {
       },
       { type: 'separator' },
       { label: '대시보드 열기', click: showDashboard },
+      { label: '업데이트 확인', click: checkForUpdates },
       { type: 'separator' },
       { label: '한잔해 종료', click: () => app.quit() }
     ])

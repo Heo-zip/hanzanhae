@@ -1,4 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
+import { randomUUID } from 'node:crypto'
+import { mkdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import type {
   AppState,
   SetupInput,
@@ -19,6 +22,8 @@ export class InvalidSetupError extends Error {}
 export class StaleStateError extends Error {}
 export class NoRecordsError extends Error {}
 export class TotalBelowZeroError extends Error {}
+
+const SCHEMA_VERSION = 8
 
 // 앱의 하루 기준인 한국 날짜를 YYYY-MM-DD로 만든다.
 const seoulDay = new Intl.DateTimeFormat('en-CA', {
@@ -42,7 +47,24 @@ export class AppDatabase {
     try {
       this.db.exec('PRAGMA foreign_keys = ON')
       const version = Number(this.db.prepare('PRAGMA user_version').get()?.user_version)
-      if (version > 8) throw new Error('지원하지 않는 데이터베이스 버전')
+      if (version > SCHEMA_VERSION) throw new Error('지원하지 않는 데이터베이스 버전')
+      const existingTables = Number(
+        this.db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+          )
+          .get()?.count
+      )
+      if (version < SCHEMA_VERSION && existingTables > 0 && path !== ':memory:') {
+        // 마이그레이션에 실패하거나 앱을 되돌릴 때 이전 데이터를 복구할 수 있게 원본을 보관한다.
+        const backupDirectory = join(dirname(path), 'backups')
+        mkdirSync(backupDirectory, { recursive: true, mode: 0o700 })
+        const backupPath = join(
+          backupDirectory,
+          `hanzanhae-before-v${version}-${randomUUID()}.sqlite`
+        )
+        this.db.prepare('VACUUM INTO ?').run(backupPath)
+      }
       if (version === 0) {
         this.db.exec(`
           BEGIN IMMEDIATE;
