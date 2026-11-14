@@ -18,6 +18,7 @@ declare global {
   interface Window {
     gardenWindow?: {
       setMousePassthrough: (ignore: boolean) => void
+      onMouseCaptureReady: (callback: () => void) => () => void
       onDragCancelled: (callback: () => void) => () => void
       cancelDrag: () => void
       beginDrag: (point: { x: number; y: number }) => void

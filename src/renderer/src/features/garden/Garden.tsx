@@ -123,6 +123,7 @@ function Garden({
 
   useEffect(() => {
     let currentIgnore: boolean | null = null
+    let cursorFrame = 0
 
     // 화분과 물뿌리개 바깥의 투명한 영역은 아래 창으로 클릭을 전달한다.
     const updatePassthrough = (ignore: boolean): void => {
@@ -138,6 +139,16 @@ function Garden({
     }
 
     const onMouseLeave = (): void => updatePassthrough(!gesture.current)
+    const unsubscribeCapture = window.gardenWindow?.onMouseCaptureReady(() => {
+      // 클릭 통과를 해제한 뒤 커서 스타일을 다시 계산한다.
+      window.cancelAnimationFrame(cursorFrame)
+      document.documentElement.classList.add('garden-refresh-cursor')
+      cursorFrame = window.requestAnimationFrame(() => {
+        cursorFrame = window.requestAnimationFrame(() => {
+          document.documentElement.classList.remove('garden-refresh-cursor')
+        })
+      })
+    })
     const unsubscribe = window.gardenWindow?.onDragCancelled(() => {
       gesture.current = null
       suppressClick.current = false
@@ -150,6 +161,9 @@ function Garden({
     return () => {
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseleave', onMouseLeave)
+      unsubscribeCapture?.()
+      window.cancelAnimationFrame(cursorFrame)
+      document.documentElement.classList.remove('garden-refresh-cursor')
       unsubscribe?.()
       updatePassthrough(true)
     }

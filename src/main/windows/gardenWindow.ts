@@ -215,6 +215,7 @@ ipcMain.on('garden:set-mouse-passthrough', (event, ignore: unknown) => {
   }
 
   gardenWindow.setIgnoreMouseEvents(ignore, { forward: true })
+  if (!ignore) gardenWindow.webContents.send('garden:mouse-capture-ready')
 })
 
 export function showGardenWindow(): void {
