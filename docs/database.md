@@ -1,6 +1,6 @@
 # 로컬 데이터 설계
 
-> 상태: 최초 설정 저장 기반 구현. `node:sqlite`와 앱 데이터 폴더의 `hanzanhae.sqlite`, 스키마 버전 7을 사용한다. 목표·기록·취소·기록별 성장과 생기를 구현했다. 통계는 기존 목표·기록·조정 이력을 조회해 계산한다.
+> 상태: `node:sqlite`와 앱 데이터 폴더의 `hanzanhae.sqlite`, 스키마 버전 8을 사용한다. 목표·기록·취소·기록별 성장과 생기를 구현했다. 통계는 기존 목표·기록·조정 이력을 조회해 계산한다. 알림 표시·클릭은 사용자가 확인했고 간격 경과 후 자동 알림 검증은 남아 있다.
 
 ## 저장 원칙
 
@@ -12,7 +12,7 @@
 
 ## 테이블 초안
 
-현재 `goal_sessions`, `plant_state`, `app_settings`, `mutation_receipts`, `daily_adjustments`, `settings_receipts`, `water_records`, `cancel_receipts`, `growth_events`, `plant_vitality`, `garden_settings`를 사용한다. 버전 1~6 데이터는 목표·기록·조정과 기존 창 설정을 보존하며 버전 7로 이전한다. 기존 기록은 성장으로 소급하지 않는다. 오늘 총량은 물 기록과 조정의 합이다.
+현재 `goal_sessions`, `plant_state`, `app_settings`, `mutation_receipts`, `daily_adjustments`, `settings_receipts`, `water_records`, `cancel_receipts`, `growth_events`, `plant_vitality`, `garden_settings`, `reminder_settings`를 사용한다. 버전 1~7 데이터는 목표·기록·조정과 기존 창 설정을 보존하며 버전 8로 이전한다. 기존 기록은 성장으로 소급하지 않는다. 오늘 총량은 물 기록과 조정의 합이다.
 
 | 이름                | 저장할 내용                                                   | 목적                                                |
 | ------------------- | ------------------------------------------------------------- | --------------------------------------------------- |
@@ -24,6 +24,7 @@
 | `plant_vitality`    | 생기와 마지막 계산 시각                                       | 경과 시간에 따른 시듦과 재실행 복원                 |
 | `app_settings`      | 한 잔 용량과 최초 설정 상태                                   | 목표 설정 복원                                      |
 | `garden_settings`   | 위치 기준·좌표·항상 위 여부                                   | 창 위치와 표시 설정 복원                            |
+| `reminder_settings` | 사용 여부·간격·한국 시간대·마지막 알림 시각                   | 알림 조건과 재시작 후 중복 방지                     |
 | `cancel_receipts`   | 취소 요청 ID, 대상 확인값, 처리 건수                          | 취소 요청 재전송 시 중복 방지                       |
 | `settings_receipts` | 설정 변경 요청 ID와 입력값                                    | 중복 설정 변경 방지                                 |
 | `mutation_receipts` | 최초 설정 요청 ID, 목표량, 한 잔 용량                         | 최초 설정 요청 재전송 시 중복 방지                  |

@@ -9,8 +9,10 @@ import type {
   PlantStatus,
   WaterStatistics,
   DailyStatistics,
-  GardenSettings
+  GardenSettings,
+  ReminderSettings
 } from '../../shared/appState'
+import { validReminderSettings } from '../reminders/policy'
 
 export class AlreadyConfiguredError extends Error {}
 export class InvalidSetupError extends Error {}
@@ -40,7 +42,7 @@ export class AppDatabase {
     try {
       this.db.exec('PRAGMA foreign_keys = ON')
       const version = Number(this.db.prepare('PRAGMA user_version').get()?.user_version)
-      if (version > 7) throw new Error('지원하지 않는 데이터베이스 버전')
+      if (version > 8) throw new Error('지원하지 않는 데이터베이스 버전')
       if (version === 0) {
         this.db.exec(`
           BEGIN IMMEDIATE;
@@ -119,6 +121,21 @@ export class AppDatabase {
           INSERT INTO garden_settings SELECT * FROM previous_garden_settings;
           DROP TABLE previous_garden_settings;
           PRAGMA user_version = 7;
+          COMMIT;
+        `)
+      }
+      if (version < 8) {
+        this.db.exec(`
+          BEGIN IMMEDIATE;
+          CREATE TABLE reminder_settings (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            enabled INTEGER NOT NULL CHECK(enabled IN (0, 1)),
+            interval_minutes INTEGER NOT NULL CHECK(interval_minutes BETWEEN 60 AND 480 AND interval_minutes % 60 = 0),
+            start_time TEXT NOT NULL, end_time TEXT NOT NULL,
+            last_notified_at TEXT
+          );
+          INSERT INTO reminder_settings VALUES (1, 0, 120, '09:00', '21:00', NULL);
+          PRAGMA user_version = 8;
           COMMIT;
         `)
       }
@@ -281,6 +298,86 @@ export class AppDatabase {
     )
       throw new Error('유효하지 않은 정원 위치')
     return { placement: row.placement, alwaysOnTop: row.always_on_top === 1, x, y }
+  }
+
+  readReminderSettings(): ReminderSettings {
+    const row = this.db
+      .prepare(
+        'SELECT enabled, interval_minutes, start_time, end_time FROM reminder_settings WHERE id = 1'
+      )
+      .get()
+    if (!row || (row.enabled !== 0 && row.enabled !== 1)) throw new Error('유효하지 않은 알림 설정')
+    const settings = {
+      enabled: row.enabled === 1,
+      intervalMinutes: Number(row.interval_minutes),
+      startTime: String(row.start_time),
+      endTime: String(row.end_time)
+    }
+    if (!validReminderSettings(settings)) throw new Error('유효하지 않은 알림 설정')
+    return settings
+  }
+
+  saveReminderSettings(settings: ReminderSettings): ReminderSettings {
+    if (!validReminderSettings(settings)) throw new InvalidSetupError()
+    const result = this.db
+      .prepare(
+        'UPDATE reminder_settings SET enabled = ?, interval_minutes = ?, start_time = ?, end_time = ? WHERE id = 1'
+      )
+      .run(settings.enabled ? 1 : 0, settings.intervalMinutes, settings.startTime, settings.endTime)
+    if (result.changes !== 1) throw new Error('알림 설정이 없어요')
+    return this.readReminderSettings()
+  }
+
+  readReminderContext(): {
+    settings: ReminderSettings
+    goalStartedAt: string | null
+    latestRecordAt: string | null
+    lastNotifiedAt: string | null
+    todayMl: number
+    goalMl: number | null
+    vitality: number
+  } {
+    const settings = this.readReminderSettings()
+    const state = this.readState()
+    const notification = this.db
+      .prepare('SELECT last_notified_at FROM reminder_settings WHERE id = 1')
+      .get()
+    const lastNotifiedAt =
+      notification?.last_notified_at == null ? null : String(notification.last_notified_at)
+    if (state.status !== 'ready')
+      return {
+        settings,
+        goalStartedAt: null,
+        latestRecordAt: null,
+        lastNotifiedAt,
+        todayMl: 0,
+        goalMl: null,
+        vitality: 100
+      }
+    const goal = this.db
+      .prepare('SELECT started_at FROM goal_sessions WHERE id = ?')
+      .get(state.goalId)
+    if (!goal || typeof goal.started_at !== 'string') throw new Error('활성 목표가 없어요')
+    const latest = this.db
+      .prepare('SELECT MAX(recorded_at) AS latest FROM water_records WHERE cancelled_at IS NULL')
+      .get()
+    return {
+      settings,
+      goalStartedAt: goal.started_at,
+      latestRecordAt: latest?.latest == null ? null : String(latest.latest),
+      lastNotifiedAt,
+      todayMl: state.todayMl,
+      goalMl: state.goalMl,
+      vitality: state.plantVitality
+    }
+  }
+
+  recordReminderShown(at: Date): void {
+    if (!Number.isFinite(at.getTime())) throw new InvalidSetupError()
+    const result = this.db
+      .prepare('UPDATE reminder_settings SET last_notified_at = ? WHERE id = 1')
+      .run(at.toISOString())
+    if (result.changes !== 1) throw new Error('알림 설정이 없어요')
   }
 
   saveGardenSettings(settings: GardenSettings): GardenSettings {

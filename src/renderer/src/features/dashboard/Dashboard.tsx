@@ -11,6 +11,7 @@ import { useCancelWater } from '../water/useCancelWater'
 import { isMlInput } from '../water/mlInput'
 import ClearTodayDialog, { type ClearTodaySnapshot } from './ClearTodayDialog'
 import { useWaterStatistics } from '../statistics/useWaterStatistics'
+import ReminderSettingsPanel from '../reminders/ReminderSettingsPanel'
 import { WeekChart, WeekCups } from '../statistics/WaterStatistics'
 import { dayLabel } from '../statistics/dateLabels'
 import logo from '../../assets/icons/logo.webp'
@@ -856,6 +857,7 @@ function Settings({
             </div>
           </div>
         </section>
+        <ReminderSettingsPanel />
         <section className="sset">
           <div className="sset-head">
             <h2>데이터</h2>

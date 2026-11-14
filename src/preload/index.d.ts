@@ -8,7 +8,10 @@ import type {
   CancelWaterResult,
   StatisticsResult,
   GardenSettingsChange,
-  GardenSettingsResult
+  GardenSettingsResult,
+  ReminderSettings,
+  ReminderSettingsResult,
+  ReminderTestResult
 } from '../shared/appState'
 
 declare global {
@@ -27,6 +30,9 @@ declare global {
       updateGardenSettings: (change: GardenSettingsChange) => Promise<GardenSettingsResult>
       onGardenSettingsChanged: (callback: () => void) => () => void
       getStatistics: () => Promise<StatisticsResult>
+      getReminderSettings: () => Promise<ReminderSettingsResult>
+      updateReminderSettings: (settings: ReminderSettings) => Promise<ReminderSettingsResult>
+      testReminder: () => Promise<ReminderTestResult>
       completeSetup: (input: SetupInput) => Promise<AppResult>
       updateSettings: (input: SettingsInput) => Promise<AppResult>
       recordCup: (input: RecordCupInput) => Promise<RecordCupResult>

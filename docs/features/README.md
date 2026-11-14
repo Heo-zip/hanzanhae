@@ -24,5 +24,6 @@ initial-setup-REPORT.md        # 기능 구현과 검증을 마친 뒤
 | 물 섭취 통계          | [PLAN](water-statistics-PLAN.md)      | [REPORT](water-statistics-REPORT.md)      | [린트](water-statistics-lint-ERROR.md), [차트 툴팁](water-statistics-tooltip-ERROR.md)                                                                                                                                                             |
 | 정원 위치와 창 설정   | [PLAN](garden-position-PLAN.md)       | [REPORT](garden-position-REPORT.md)       | [전체 화면](garden-position-fullscreen-ERROR.md), [위치 복원](garden-position-restore-ERROR.md), [검증 입력](garden-position-test-input-ERROR.md), [린트](garden-position-lint-ERROR.md)                                                           |
 
+- 식물 알림: [PLAN](plant-reminders-PLAN.md), [REPORT](plant-reminders-REPORT.md), [macOS 알림 거부](plant-reminders-macos-permission-ERROR.md), [테스트 모듈](plant-reminders-test-import-ERROR.md), [테스트 린트](plant-reminders-test-lint-ERROR.md). 실제 표시·클릭을 사용자가 확인했고 간격 경과 후 자동 알림 검증은 남아 있다.
 - 공통 패키지 검사: [패키지 검사 린트 오류](packaged-bundle-check-lint-ERROR.md).
 - 계획과 결과는 해당 작업 시점의 기록이다. 이후 달라진 현재 동작·검증 범위는 [현재 상태](../CONTEXT.md)에서 확인한다.

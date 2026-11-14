@@ -15,7 +15,17 @@ const source = ts.transpileModule(readFileSync(path, 'utf8'), {
 }).outputText
 const moduleUnderTest = new Module(path)
 moduleUnderTest.filename = path
+// 저장소가 가져오는 정책 모듈도 같은 방식으로 변환한다.
+const previousTsLoader = Module._extensions['.ts']
+Module._extensions['.ts'] = (module, filename) => {
+  const compiled = ts.transpileModule(readFileSync(filename, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
+  }).outputText
+  module._compile(compiled, filename)
+}
 moduleUnderTest._compile(source, path)
+if (previousTsLoader) Module._extensions['.ts'] = previousTsLoader
+else delete Module._extensions['.ts']
 const {
   AppDatabase,
   AlreadyConfiguredError,
@@ -251,7 +261,7 @@ test('설정 저장 실패는 이전 목표와 조정을 함께 보존한다', (
   }
 })
 
-test('버전 1 데이터는 설정을 유지하며 버전 7으로 이전한다', () => {
+test('버전 1 데이터는 설정을 유지하며 버전 8로 이전한다', () => {
   const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-migrate-'))
   const path = join(dir, 'test.sqlite')
   try {
@@ -260,7 +270,7 @@ test('버전 1 데이터는 설정을 유지하며 버전 7으로 이전한다',
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE water_records; DROP TABLE daily_adjustments; DROP TABLE settings_receipts; PRAGMA user_version = 1'
+      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE water_records; DROP TABLE daily_adjustments; DROP TABLE settings_receipts; PRAGMA user_version = 1'
     )
     old.close()
     const migrated = new AppDatabase(path)
@@ -382,7 +392,7 @@ test('버전 2 데이터의 목표와 조정을 보존하며 물 기록 테이�
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE water_records; PRAGMA user_version = 2'
+      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE water_records; PRAGMA user_version = 2'
     )
     old.close()
     const migrated = new AppDatabase(path)
@@ -645,7 +655,7 @@ test('버전 3 데이터의 기록을 보존하며 취소 이력 테이블을 �
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; PRAGMA user_version = 3'
+      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; PRAGMA user_version = 3'
     )
     old.close()
     const migrated = new AppDatabase(path)
@@ -869,7 +879,7 @@ test('버전 4의 기존 물 기록은 보존하되 성장 보상을 소급하�
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; PRAGMA user_version = 4'
+      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; PRAGMA user_version = 4'
     )
     old.close()
     db = new AppDatabase(path, now)
@@ -1141,7 +1151,7 @@ test('버전 5 데이터 이전 시 기존 기록을 유지하고 정원 설정 
     }).state
     db.close()
     const old = new DatabaseSync(path)
-    old.exec('DROP TABLE garden_settings; PRAGMA user_version = 5')
+    old.exec('DROP TABLE reminder_settings; DROP TABLE garden_settings; PRAGMA user_version = 5')
     old.close()
     db = new AppDatabase(path)
     assert.deepEqual(db.readState(), recorded)
@@ -1167,6 +1177,7 @@ test('버전 6 정원 설정은 보존하면서 직접 이동한 위치를 저�
     db.close()
     const old = new DatabaseSync(path)
     old.exec(`
+      DROP TABLE reminder_settings;
       ALTER TABLE garden_settings RENAME TO tmp_settings;
       CREATE TABLE garden_settings (id INTEGER PRIMARY KEY CHECK(id = 1), placement TEXT NOT NULL CHECK(placement IN ('dock','floor')), always_on_top INTEGER NOT NULL CHECK(always_on_top IN (0,1)), x INTEGER, y INTEGER, CHECK((x IS NULL AND y IS NULL) OR (x IS NOT NULL AND y IS NOT NULL)));
       INSERT INTO garden_settings SELECT * FROM tmp_settings;
@@ -1180,6 +1191,80 @@ test('버전 6 정원 설정은 보존하면서 직접 이동한 위치를 저�
       ...expected,
       placement: 'custom'
     })
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('버전 7의 기록과 위치를 보존하며 알림 설정을 추가하고 재실행 후 복원한다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-reminder-v7-'))
+  try {
+    const path = join(dir, 'test.sqlite')
+    let now = new Date('2026-11-13T00:00:00.000Z')
+    let db = new AppDatabase(path, () => now)
+    let state = db.completeSetup({ requestId: 'setup', goalMl: 1500, cupMl: 250 })
+    const position = { placement: 'custom', alwaysOnTop: true, x: 100, y: 200 }
+    db.saveGardenSettings(position)
+    now = new Date('2026-11-13T01:00:00.000Z')
+    state = db.recordCup({ requestId: 'water', expectedGoalId: state.goalId, day: state.day }).state
+    db.close()
+    const old = new DatabaseSync(path)
+    old.exec('DROP TABLE reminder_settings; PRAGMA user_version = 7')
+    old.close()
+    db = new AppDatabase(path, () => now)
+    const initial = { enabled: false, intervalMinutes: 120, startTime: '09:00', endTime: '21:00' }
+    assert.deepEqual(db.readReminderSettings(), initial)
+    assert.deepEqual(db.readGardenSettings(), position)
+    assert.equal(db.readState().todayMl, 250)
+    const saved = { enabled: true, intervalMinutes: 180, startTime: '22:00', endTime: '06:00' }
+    assert.deepEqual(db.saveReminderSettings(saved), saved)
+    assert.throws(
+      () => db.saveReminderSettings({ ...saved, startTime: '06:00' }),
+      InvalidSetupError
+    )
+    assert.throws(
+      () => db.saveReminderSettings({ ...saved, intervalMinutes: 0 }),
+      InvalidSetupError
+    )
+    assert.deepEqual(db.readReminderSettings(), saved)
+    db.recordReminderShown(now)
+    assert.equal(db.readReminderContext().latestRecordAt, now.toISOString())
+    assert.equal(db.readReminderContext().lastNotifiedAt, now.toISOString())
+    state = db.cancelWater({
+      requestId: 'cancel',
+      kind: 'latest',
+      expectedGoalId: state.goalId,
+      day: state.day,
+      recordId: state.todayRecords[0].id
+    }).state
+    assert.equal(db.readReminderContext().latestRecordAt, null)
+    assert.equal(state.todayMl, 0)
+    db.close()
+    db = new AppDatabase(path, () => now)
+    assert.deepEqual(db.readReminderSettings(), saved)
+    assert.equal(db.readReminderContext().lastNotifiedAt, now.toISOString())
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('알림 설정이나 전송 시각 저장이 실패하면 이전 값을 유지한다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-reminder-fail-'))
+  try {
+    const path = join(dir, 'test.sqlite')
+    const db = new AppDatabase(path)
+    const before = db.readReminderSettings()
+    const inspector = new DatabaseSync(path)
+    inspector.exec(
+      "CREATE TRIGGER fail_reminder BEFORE UPDATE ON reminder_settings BEGIN SELECT RAISE(ABORT, 'failure'); END;"
+    )
+    assert.throws(() => db.saveReminderSettings({ ...before, enabled: true }))
+    assert.throws(() => db.recordReminderShown(new Date()))
+    assert.deepEqual(db.readReminderSettings(), before)
+    assert.equal(db.readReminderContext().lastNotifiedAt, null)
+    inspector.close()
     db.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })

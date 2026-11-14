@@ -1,0 +1,28 @@
+.reminder-settings select,
+.reminder-time-fields input {
+  min-width: 0;
+  border: 1px solid #e1e8e2;
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px;
+  color: inherit;
+  font: inherit;
+}
+
+.reminder-time-fields {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.reminder-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.reminder-settings .water-error,
+.reminder-settings .settings-saved {
+  margin-top: 10px;
+}
