@@ -11,6 +11,7 @@ import {
 import { initializeGardenControls } from './gardenControls'
 import { initializeStorageIpc } from './storage/ipc'
 import { initializeReminders } from './reminders/service'
+import { initializeUpdates } from './updates'
 
 let dashboardWindow: BrowserWindow | null = null
 
@@ -98,7 +99,7 @@ app.whenReady().then(() => {
   initializeGardenWindowIpc(() => dashboardWindow)
   createWindow()
   showGardenWindow()
-  initializeGardenControls(showDashboard)
+  initializeGardenControls(showDashboard, initializeUpdates())
   initializeReminders(() => dashboardWindow, showDashboard)
 
   app.on('activate', function () {

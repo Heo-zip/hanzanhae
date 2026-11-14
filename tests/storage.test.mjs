@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -1333,6 +1333,80 @@ test('최초 설정부터 달성·취소·통계·알림 기준과 재실행 복
     assert.equal(db.readStatistics().days.at(-1).achieved, false)
   } finally {
     db?.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('스키마 이전 전 사용자 기록을 복구 가능한 SQLite 백업으로 보관한다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-update-backup-'))
+  const path = join(dir, 'hanzanhae.sqlite')
+  try {
+    let db = new AppDatabase(path)
+    const initial = db.completeSetup({ requestId: 'backup-setup', goalMl: 250, cupMl: 250 })
+    const garden = { placement: 'custom', alwaysOnTop: false, x: 100, y: 200 }
+    db.saveGardenSettings(garden)
+    db.recordCup({ requestId: 'backup-water', expectedGoalId: initial.goalId, day: initial.day })
+    db.close()
+    const old = new DatabaseSync(path)
+    // WAL에 아직 남아 있는 변경도 백업에 반영돼야 한다.
+    old.exec('PRAGMA journal_mode = WAL; DROP TABLE reminder_settings; PRAGMA user_version = 7')
+    db = new AppDatabase(path)
+    assert.equal(db.readState().todayMl, 250)
+    assert.equal(db.readState().growthPoints, 1000)
+    assert.deepEqual(db.readGardenSettings(), garden)
+    db.close()
+    old.close()
+    const backups = readdirSync(join(dir, 'backups'))
+    assert.equal(backups.length, 1)
+    const backup = new DatabaseSync(join(dir, 'backups', backups[0]), { readOnly: true })
+    assert.equal(backup.prepare('PRAGMA user_version').get().user_version, 7)
+    assert.equal(backup.prepare('SELECT COUNT(*) AS count FROM water_records').get().count, 1)
+    assert.equal(backup.prepare('SELECT target_ml FROM goal_sessions').get().target_ml, 250)
+    assert.equal(backup.prepare('SELECT points FROM growth_events').get().points, 1000)
+    assert.equal(backup.prepare('SELECT placement FROM garden_settings').get().placement, 'custom')
+    backup.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('마이그레이션 전 백업을 만들 수 없다면 기존 데이터를 변경하지 않는다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-update-backup-error-'))
+  const path = join(dir, 'hanzanhae.sqlite')
+  try {
+    const db = new AppDatabase(path)
+    db.completeSetup({ requestId: 'backup-fail-setup', goalMl: 1000, cupMl: 250 })
+    db.close()
+    const old = new DatabaseSync(path)
+    old.exec('DROP TABLE reminder_settings; PRAGMA user_version = 7')
+    old.close()
+    writeFileSync(join(dir, 'backups'), '백업 폴더를 만들 수 없는 상황')
+    assert.throws(() => new AppDatabase(path))
+    const unchanged = new DatabaseSync(path, { readOnly: true })
+    assert.equal(unchanged.prepare('PRAGMA user_version').get().user_version, 7)
+    assert.equal(unchanged.prepare('SELECT target_ml FROM goal_sessions').get().target_ml, 1000)
+    unchanged.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('더 최신 앱의 데이터베이스는 이전 버전에서 변경하지 않는다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-update-newer-schema-'))
+  const path = join(dir, 'hanzanhae.sqlite')
+  try {
+    const db = new AppDatabase(path)
+    db.completeSetup({ requestId: 'future-setup', goalMl: 1000, cupMl: 250 })
+    db.close()
+    const future = new DatabaseSync(path)
+    future.exec('PRAGMA user_version = 9')
+    future.close()
+    assert.throws(() => new AppDatabase(path), /지원하지 않는 데이터베이스 버전/)
+    const unchanged = new DatabaseSync(path, { readOnly: true })
+    assert.equal(unchanged.prepare('PRAGMA user_version').get().user_version, 9)
+    assert.equal(unchanged.prepare('SELECT target_ml FROM goal_sessions').get().target_ml, 1000)
+    unchanged.close()
+  } finally {
     rmSync(dir, { recursive: true, force: true })
   }
 })

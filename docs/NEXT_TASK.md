@@ -27,6 +27,8 @@
 
 ## 그다음 작업
 
+구현·격리 검증: [Issue #29](https://github.com/Heo-zip/hanzanhae/issues/29)에서 macOS 자동 업데이트와 스키마 이전 전 DB 백업을 구현했다. [결과](features/auto-update-REPORT.md). Developer ID 서명과 실제 두 버전 간 업데이트·데이터 보존은 별도로 검증해야 한다.
+
 1. [식물 상태 기반 macOS 알림](features/plant-reminders-PLAN.md)의 설정과 알림 요청을 구현했고 자동 검사와 사용자 알림 표시·클릭 확인을 마쳤다. 간격 경과 후 자동 알림 확인은 남았다. [오류 기록](features/plant-reminders-macos-permission-ERROR.md)을 따른다.
 2. 첫 설정부터 물 기록·취소·성장·통계·재실행까지 임시 데이터로 통합 검증했다. Dock 위치 반응·실제 다중 모니터와 패키징은 별도로 검증한다. [통합 검증 결과](features/mvp-integration-REPORT.md)
 3. MediaPipe 동작 감지의 정확도·권한·성능은 이후 별도로 실험한다. 제안과 미정 항목은 [제품 개요](product.md#mvp-이후-아이디어)를 따른다.
