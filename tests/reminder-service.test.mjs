@@ -45,8 +45,8 @@ function createHarness(mode = 'show', initiallyEnabled = true) {
     goalStartedAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
     latestRecordAt: null,
     lastNotifiedAt: null,
-    todayMl: 0,
-    goalMl: 1000,
+    todayCount: 0,
+    goalCount: 8,
     vitality: 30
   }
   const writes = []

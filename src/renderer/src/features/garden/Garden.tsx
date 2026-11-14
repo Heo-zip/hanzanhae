@@ -223,7 +223,9 @@ function Garden({
           data-garden-interactive
           disabled={busy || cancelBusy || pouring || state.status !== 'ready'}
           aria-label={
-            state.status === 'ready' ? '물 한 잔 기록하기' : '목표를 설정해야 물을 기록할 수 있어요'
+            state.status === 'ready'
+              ? '다 비운 텀블러 기록하기'
+              : '목표를 설정해야 물을 기록할 수 있어요'
           }
           onClick={() => void record()}
         >

@@ -31,3 +31,5 @@ initial-setup-REPORT.md        # 기능 구현과 검증을 마친 뒤
 - 정원 커서: [오류 기록](garden-cursor-feedback-ERROR.md). 실제 macOS 마우스 확인은 남아 있다.
 - 공통 패키지 검사: [패키지 검사 린트 오류](packaged-bundle-check-lint-ERROR.md).
 - 계획과 결과는 해당 작업 시점의 기록이다. 이후 달라진 현재 동작·검증 범위는 [현재 상태](../CONTEXT.md)에서 확인한다.
+
+- 횟수 목표와 텀블러 기록 분리: [PLAN](drink-count-goal-PLAN.md), [REPORT](drink-count-goal-REPORT.md), [이전 테스트 오류](drink-count-goal-test-migration-ERROR.md). 카메라 자동 감지는 후속 작업이다.

@@ -4,7 +4,8 @@ import type {
   SettingsInput,
   WaterStatistics,
   GardenSettings,
-  GardenSettingsChange
+  GardenSettingsChange,
+  DrinkActionInput
 } from '../../../../shared/appState'
 import { useRecordCup } from '../water/useRecordCup'
 import { useCancelWater } from '../water/useCancelWater'
@@ -14,7 +15,6 @@ import { useWaterStatistics } from '../statistics/useWaterStatistics'
 import ReminderSettingsPanel from '../reminders/ReminderSettingsPanel'
 import { WeekChart, WeekCups } from '../statistics/WaterStatistics'
 import { dayLabel } from '../statistics/dateLabels'
-import logo from '../../assets/icons/logo.webp'
 import wordmark from '../../assets/icons/wordmark.webp'
 import navToday from '../../assets/icons/nav-today.webp'
 import navHistory from '../../assets/icons/nav-history.webp'
@@ -103,7 +103,7 @@ function Today({
   statisticsError: boolean
   refreshStatistics: () => void
 }): React.JSX.Element {
-  const { goalMl, cupMl, todayMl, todayRecords } = state
+  const { goalCount, todayCount, cupMl, todayMl, todayRecords } = state
   const { record, busy, error } = useRecordCup(state, refresh)
   const {
     cancel,
@@ -114,6 +114,52 @@ function Today({
     errorCode
   } = useCancelWater(refresh)
   const [cancelNotice, setCancelNotice] = useState('')
+  const [drinkBusy, setDrinkBusy] = useState(false)
+  const [drinkError, setDrinkError] = useState('')
+  const [pendingDrinkKind, setPendingDrinkKind] = useState<'add' | 'undo' | null>(null)
+  const drinkRunning = useRef(false)
+  const pendingDrink = useRef<DrinkActionInput | null>(null)
+  async function changeDrinkCount(kind: 'add' | 'undo'): Promise<void> {
+    if (
+      drinkRunning.current ||
+      (kind === 'undo' && state.latestDrinkId === null && !pendingDrink.current)
+    )
+      return
+    if (pendingDrink.current && pendingDrink.current.kind !== kind) {
+      setDrinkError('이전 요청의 결과를 확인하도록 같은 버튼을 다시 눌러 주세요.')
+      return
+    }
+    drinkRunning.current = true
+    setDrinkBusy(true)
+    setDrinkError('')
+    const input: DrinkActionInput = pendingDrink.current ?? {
+      requestId: crypto.randomUUID(),
+      expectedGoalId: state.goalId,
+      day: state.day,
+      kind,
+      ...(kind === 'undo' ? { recordId: state.latestDrinkId! } : {})
+    }
+    pendingDrink.current = input
+    setPendingDrinkKind(kind)
+    try {
+      const response = await window.hanzanhae.recordDrinkAction(input)
+      if (response.ok) {
+        pendingDrink.current = null
+        setPendingDrinkKind(null)
+        await refresh()
+      } else if (response.code === 'STALE_STATE' || response.code === 'VALIDATION_ERROR') {
+        pendingDrink.current = null
+        setPendingDrinkKind(null)
+        await refresh()
+        setDrinkError('목표나 기록이 바뀌었어요. 다시 확인해 주세요.')
+      } else setDrinkError('횟수를 저장하지 못했어요. 같은 버튼을 눌러 다시 시도해 주세요.')
+    } catch {
+      setDrinkError('횟수를 저장하지 못했어요. 다시 시도해 주세요.')
+    } finally {
+      drinkRunning.current = false
+      setDrinkBusy(false)
+    }
+  }
   const [watered, setWatered] = useState(false)
   const [waterPulse, setWaterPulse] = useState(0)
   useEffect(() => {
@@ -145,7 +191,7 @@ function Today({
         recordId: latest.id
       })
     )
-      setCancelNotice('최근 한 잔을 취소했어요.')
+      setCancelNotice('최근 텀블러 기록을 취소했어요.')
   }
 
   function openCancelToday(): void {
@@ -154,7 +200,7 @@ function Today({
     setModalAttempted(false)
     setClearSnapshot({
       goalId: state.goalId,
-      goalMl: state.goalMl,
+      goalCount: state.goalCount,
       day: state.day,
       todayMl: state.todayMl,
       adjustmentMl:
@@ -183,7 +229,7 @@ function Today({
     return success
   }
   const today = dayFormat.format(new Date())
-  const percent = Math.min(100, Math.round((todayMl / goalMl) * 100))
+  const percent = Math.min(100, Math.round((todayCount / goalCount) * 100))
   const stageIndex = plantIndex(state.plantStage)
   const stage = stages[stageIndex]
 
@@ -195,7 +241,7 @@ function Today({
             <div className="msg">
               <div className="hi">{today}</div>
               <h1>
-                {todayMl >= goalMl ? (
+                {todayCount >= goalCount ? (
                   <>
                     오늘 목표 달성!
                     <br />
@@ -206,7 +252,7 @@ function Today({
                     화분이 목말라 해요
                     <br />물 <em>한 잔</em> 어때요?
                   </>
-                ) : todayRecords.length === 0 ? (
+                ) : todayCount === 0 ? (
                   <>
                     화분이 오늘의
                     <br />
@@ -214,16 +260,16 @@ function Today({
                   </>
                 ) : (
                   <>
-                    오늘 <em>{todayRecords.length}잔</em> 마셨어요
+                    오늘 <em>{todayCount}회</em> 마셨어요
                     <br />
                     화분이 생생해요
                   </>
                 )}
               </h1>
               <p>
-                {todayMl >= goalMl
+                {todayCount >= goalCount
                   ? '오늘 목표를 달성했어요!'
-                  : `목표까지 ${format(goalMl - todayMl)}ml 남았어요.`}
+                  : `목표까지 ${format(goalCount - todayCount)}회 남았어요.`}
               </p>
               <div className="grow">
                 <div className="steps" aria-hidden="true">
@@ -251,34 +297,59 @@ function Today({
           <div className="card today">
             <div className="today-top">
               <div>
-                <h2>오늘 마신 물</h2>
+                <h2>오늘 물 마신 횟수</h2>
                 <div className="big num">
-                  <b>{format(todayMl)}</b>
-                  <span>ml</span>
+                  <b>{format(todayCount)}</b>
+                  <span>회</span>
                 </div>
                 <div className="sub">
-                  {todayMl >= goalMl
+                  {todayCount >= goalCount
                     ? '오늘 목표를 달성했어요!'
-                    : `목표까지 ${format(goalMl - todayMl)}ml 남았어요`}
+                    : `목표까지 ${format(goalCount - todayCount)}회 남았어요`}
                 </div>
               </div>
               <div className="today-actions">
-                <button className="goal-link" onClick={onSettings}>
-                  목표 <span className="num">{format(goalMl)}</span>ml ›
-                </button>
-                <button
-                  className="drink"
-                  disabled={busy || cancelBusy}
-                  onClick={() => void record()}
-                >
-                  <img src={drop} alt="" width="20" height="20" /> 한 잔 마셨어요{' '}
-                  <small>+{cupMl}ml</small>
-                </button>
+                <div className="today-action-links">
+                  <button className="goal-link" onClick={onSettings}>
+                    목표 <span className="num">{format(goalCount)}</span>회 ›
+                  </button>
+                  <button
+                    className="plain-action"
+                    disabled={
+                      drinkBusy || (state.latestDrinkId === null && pendingDrinkKind !== 'undo')
+                    }
+                    onClick={() => void changeDrinkCount('undo')}
+                  >
+                    최근 횟수 취소
+                  </button>
+                </div>
+                <div className="today-primary-actions">
+                  <button
+                    className="drink"
+                    disabled={drinkBusy}
+                    onClick={() => void changeDrinkCount('add')}
+                  >
+                    물 마신 횟수 추가
+                  </button>
+                  <button
+                    className="drink drink-outline"
+                    disabled={busy || cancelBusy}
+                    onClick={() => void record()}
+                  >
+                    <img src={drop} alt="" width="20" height="20" />
+                    <span>텀블러 비우기</span> <small>+{cupMl}ml</small>
+                  </button>
+                </div>
               </div>
             </div>
             {error && (
               <p className="water-error" role="alert">
                 {error}
+              </p>
+            )}
+            {drinkError && (
+              <p className="water-error" role="alert">
+                {drinkError}
               </p>
             )}
             <div className="track" aria-label={`목표 진행률 ${percent}%`}>
@@ -290,17 +361,17 @@ function Today({
             </div>
             <div className="ends">
               <span>0</span>
-              <span className="num">{format(goalMl)}ml</span>
+              <span className="num">{format(goalCount)}회</span>
             </div>
           </div>
           <div className="tiles">
             <Metric
               icon={statLeft}
-              label="남은 양"
-              value={format(Math.max(0, goalMl - todayMl))}
-              unit="ml"
+              label="남은 횟수"
+              value={format(Math.max(0, goalCount - todayCount))}
+              unit="회"
             />
-            <Metric icon={statCups} label="오늘 마신 잔" value={todayRecords.length} unit="잔" />
+            <Metric icon={statCups} label="기록한 물" value={todayMl} unit="ml" />
             <Metric
               icon={statStreak}
               label="연속 달성"
@@ -365,7 +436,7 @@ function Today({
                       disabled={busy || cancelBusy || retryable}
                       onClick={() => void cancelLatest()}
                     >
-                      최근 한 잔 취소
+                      최근 텀블러 취소
                     </button>
                   )}
                 </li>
@@ -505,7 +576,6 @@ function Settings({
 }): React.JSX.Element {
   const [editing, setEditing] = useState(false)
   const [goal, setGoal] = useState('')
-  const [total, setTotal] = useState(String(state.todayMl))
   const [snapshot, setSnapshot] = useState({
     goalId: state.status === 'ready' ? state.goalId : null,
     todayMl: state.todayMl,
@@ -595,16 +665,16 @@ function Settings({
     return false
   }
   async function saveGoal(): Promise<void> {
-    if (!isMlInput(goal) || !isMlInput(total, true)) {
-      setError('목표는 1ml 이상, 오늘 마신 양은 0ml 이상으로 입력해 주세요.')
+    if (!isMlInput(goal)) {
+      setError('하루 목표를 1회 이상으로 입력해 주세요.')
       return
     }
     if (
       await save({
         requestId: crypto.randomUUID(),
         kind: 'goal',
-        goalMl: Number(goal),
-        todayMl: Number(total),
+        goalCount: Number(goal),
+        todayMl: snapshot.todayMl,
         expectedTodayMl: snapshot.todayMl,
         expectedGoalId: snapshot.goalId,
         day: snapshot.day
@@ -616,12 +686,12 @@ function Settings({
   }
   async function saveCup(): Promise<void> {
     if (!isMlInput(cup)) {
-      setError('한 잔 용량을 1ml 이상으로 입력해 주세요.')
+      setError('텀블러 용량을 1ml 이상으로 입력해 주세요.')
       return
     }
     if (Number(cup) === state.cupMl) return
     if (await save({ requestId: crypto.randomUUID(), kind: 'cup', cupMl: Number(cup) }))
-      setMessage('한 잔 용량을 저장했어요.')
+      setMessage('텀블러 용량을 저장했어요.')
   }
   async function stopGoal(): Promise<void> {
     if (goalId === null || !window.confirm('현재 목표를 멈출까요? 기존 기록과 화분은 유지돼요.'))
@@ -633,7 +703,6 @@ function Settings({
     <section className="view on" aria-label="설정">
       <div className="head">
         <h1>설정</h1>
-        <span>기록은 이 Mac에만 저장돼요</span>
       </div>
       <div className="settings">
         {error && (
@@ -649,18 +718,14 @@ function Settings({
         <section className="sset">
           <div className="sset-head">
             <h2>하루 목표</h2>
-            <p>
-              목표를 바꾸면 지금 목표는 멈추고 새 목표로 이어서 기록해요. 지금까지의 기록과 화분은
-              그대로 남아요.
-            </p>
           </div>
           <div>
             <div className="goal-row">
               <div className="goal-big num">
                 {state.status === 'ready' ? (
                   <>
-                    <b>{format(state.goalMl)}</b>
-                    <span>ml</span>
+                    <b>{format(state.goalCount)}</b>
+                    <span>회</span>
                   </>
                 ) : (
                   <b>목표 없음</b>
@@ -672,7 +737,6 @@ function Settings({
                   disabled={busy}
                   onClick={() => {
                     setGoal('')
-                    setTotal(String(state.todayMl))
                     setSnapshot({ goalId, todayMl: state.todayMl, day: state.day })
                     setError('')
                     setMessage('')
@@ -706,27 +770,10 @@ function Settings({
                         value={goal}
                         onChange={(e) => setGoal(e.target.value)}
                       />
-                      <span>ml</span>
-                    </span>
-                  </label>
-                  <label>
-                    오늘 이미 마신 양
-                    <span className="mini-field">
-                      <input
-                        type="number"
-                        min="0"
-                        inputMode="numeric"
-                        value={total}
-                        onChange={(e) => setTotal(e.target.value)}
-                      />
-                      <span>ml</span>
+                      <span>회</span>
                     </span>
                   </label>
                 </div>
-                <p className="note">
-                  앱에 기록하지 않고 마신 물이 있다면 오늘 마신 양에 함께 적어 주세요. 이미 기록한
-                  양에 다시 더하지 않아요.
-                </p>
                 <div className="row-btns">
                   <button
                     className="btn ghost"
@@ -748,8 +795,7 @@ function Settings({
         </section>
         <section className="sset">
           <div className="sset-head">
-            <h2>한 잔 용량</h2>
-            <p>물뿌리개를 한 번 누를 때 기록되는 양이에요. 바꾸면 다음 기록부터 적용돼요.</p>
+            <h2>텀블러 용량</h2>
           </div>
           <div className="cup-edit">
             <Glass
@@ -761,7 +807,7 @@ function Settings({
                 type="number"
                 min="1"
                 inputMode="numeric"
-                aria-label="한 잔 용량"
+                aria-label="텀블러 용량"
                 value={cup}
                 onChange={(e) => setCup(e.target.value)}
                 onBlur={() => void saveCup()}
@@ -777,7 +823,6 @@ function Settings({
         <section className="sset">
           <div className="sset-head">
             <h2>화분 놓는 곳</h2>
-            <p>화분을 놓을 위치를 고르거나 직접 끌어서 옮겨요.</p>
           </div>
           <div className="place-pick">
             <button
@@ -819,13 +864,11 @@ function Settings({
         <section className="sset">
           <div className="sset-head">
             <h2>위젯 동작</h2>
-            <p>일하는 동안 화분이 어떻게 보일지 정해요.</p>
           </div>
           <div className="group">
             <div className="set">
               <div>
                 <b>다른 창 위에 표시</b>
-                <small>업무 창에 가려지지 않게 해요</small>
               </div>
               <button
                 className="switch"
@@ -844,8 +887,7 @@ function Settings({
             </div>
             <div className="set">
               <div>
-                <b>로그인 시 자동 실행</b>
-                <small>Mac을 켜면 화분도 함께 떠요</small>
+                <b>로그인 시 자동 실행 (준비 중)</b>
               </div>
               <button
                 className="switch"
@@ -858,16 +900,6 @@ function Settings({
           </div>
         </section>
         <ReminderSettingsPanel />
-        <section className="sset">
-          <div className="sset-head">
-            <h2>데이터</h2>
-            <p>로그인 없이 쓰는 앱이에요.</p>
-          </div>
-          <p className="data-note">
-            <img src={logo} alt="" />
-            모든 기록은 이 Mac에만 저장되고, 다른 기기와 자동으로 동기화되지 않아요.
-          </p>
-        </section>
       </div>
     </section>
   )
@@ -904,11 +936,6 @@ function Dashboard({
             </button>
           ))}
         </nav>
-        <div className="foot">
-          기록은 이 Mac에만 저장돼요.
-          <br />
-          로그인 없이 사용 중
-        </div>
       </aside>
       <main>
         {view === 'today' &&
@@ -924,7 +951,7 @@ function Dashboard({
           ) : (
             <section className="view on">
               <div className="head">
-                <h1>진행 중인 목표가 없어요</h1>
+                <h1>물 마시기 횟수 목표를 설정해 주세요</h1>
               </div>
               <p>기존 기록과 화분은 그대로 남아 있어요.</p>
               <button className="btn line" onClick={() => setView('settings')}>

@@ -6,7 +6,9 @@ export type AppState =
   | ({
       status: 'ready'
       goalId: number
-      goalMl: number
+      goalCount: number
+      todayCount: number
+      latestDrinkId: number | null
       cupMl: number
       todayMl: number
       todayRecords: WaterRecord[]
@@ -14,6 +16,8 @@ export type AppState =
     } & PlantStatus)
   | ({
       status: 'goal-stopped'
+      todayCount: number
+      latestDrinkId: number | null
       cupMl: number
       todayMl: number
       todayRecords: WaterRecord[]
@@ -21,6 +25,13 @@ export type AppState =
     } & PlantStatus)
 
 export type WaterRecord = { id: number; goalId: number; amountMl: number; recordedAt: string }
+export type DrinkActionInput = {
+  requestId: string
+  expectedGoalId: number
+  day: string
+  kind: 'add' | 'undo'
+  recordId?: number
+}
 export type RecordCupInput = { requestId: string; expectedGoalId: number; day: string }
 export type RecordCupResult =
   | { ok: true; state: AppState; created: boolean }
@@ -46,7 +57,7 @@ export type AppResult =
   | { ok: true; state: AppState }
   | { ok: false; code: 'VALIDATION_ERROR' | 'ALREADY_CONFIGURED' | 'STALE_STATE' | 'STORAGE_ERROR' }
 
-export type SetupInput = { requestId: string; goalMl: number; cupMl: number }
+export type SetupInput = { requestId: string; goalCount: number; cupMl: number }
 export type SettingsInput =
   | { requestId: string; kind: 'cup'; cupMl: number }
   | { requestId: string; kind: 'stop'; expectedGoalId: number }
@@ -56,7 +67,7 @@ export type SettingsInput =
       expectedGoalId: number | null
       day: string
       expectedTodayMl: number
-      goalMl: number
+      goalCount: number
       todayMl: number
     }
 
@@ -64,6 +75,8 @@ export type DailyStatistics = {
   day: string
   totalMl: number
   goalMl: number | null
+  goalCount: number | null
+  drinkCount: number
   achieved: boolean
 }
 export type WaterStatistics = {

@@ -5,7 +5,7 @@ import { plants, plantIndex } from '../plant/plantVisual'
 
 export type ClearTodaySnapshot = {
   goalId: number
-  goalMl: number
+  goalCount: number
   day: string
   todayMl: number
   adjustmentMl: number
@@ -122,7 +122,7 @@ function ClearTodayDialog({
         {!blocked && (
           <ul className="cf-keep">
             <li className="cf-keep-h">그대로 남아요</li>
-            <li>하루 목표 {format(snapshot.goalMl)}ml</li>
+            <li>하루 목표 {format(snapshot.goalCount)}회와 물 마신 횟수</li>
             <li>다른 목표와 어제까지의 기록, 화분</li>
             {snapshot.adjustmentMl !== 0 && (
               <li>

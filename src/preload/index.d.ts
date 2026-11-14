@@ -11,7 +11,8 @@ import type {
   GardenSettingsResult,
   ReminderSettings,
   ReminderSettingsResult,
-  ReminderTestResult
+  ReminderTestResult,
+  DrinkActionInput
 } from '../shared/appState'
 
 declare global {
@@ -37,6 +38,7 @@ declare global {
       completeSetup: (input: SetupInput) => Promise<AppResult>
       updateSettings: (input: SettingsInput) => Promise<AppResult>
       recordCup: (input: RecordCupInput) => Promise<RecordCupResult>
+      recordDrinkAction: (input: DrinkActionInput) => Promise<AppResult>
       cancelWater: (input: CancelWaterInput) => Promise<CancelWaterResult>
       onWaterRecorded: (callback: () => void) => () => void
       onStateChanged: (callback: () => void) => () => void

@@ -31,21 +31,22 @@ export function shouldRemind(input: {
   goalStartedAt: string | null
   latestRecordAt: string | null
   lastNotifiedAt: string | null
-  todayMl: number
-  goalMl: number | null
+  todayCount: number
+  goalCount: number | null
 }): boolean {
-  const { settings, now, goalStartedAt, latestRecordAt, lastNotifiedAt, todayMl, goalMl } = input
+  const { settings, now, goalStartedAt, latestRecordAt, lastNotifiedAt, todayCount, goalCount } =
+    input
   const timestamp = now.getTime()
   if (
     !validReminderSettings(settings) ||
     !settings.enabled ||
     !Number.isFinite(timestamp) ||
     !goalStartedAt ||
-    !Number.isFinite(todayMl) ||
-    goalMl === null ||
-    !Number.isFinite(goalMl) ||
-    goalMl <= 0 ||
-    todayMl >= goalMl
+    !Number.isFinite(todayCount) ||
+    goalCount === null ||
+    !Number.isFinite(goalCount) ||
+    goalCount <= 0 ||
+    todayCount >= goalCount
   )
     return false
   const time = seoulTime.format(now)
