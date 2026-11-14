@@ -47,10 +47,6 @@ html.garden-refresh-cursor [data-garden-interactive] {
   cursor: default !important;
 }
 
-.garden-plant:hover .garden-layer {
-  filter: drop-shadow(0 3px 8px rgba(59, 166, 103, 0.35));
-}
-
 .garden-plant:focus-visible {
   outline: 2px solid #43ad6a;
   outline-offset: -18px;
