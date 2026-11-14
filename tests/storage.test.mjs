@@ -1270,3 +1270,69 @@ test('알림 설정이나 전송 시각 저장이 실패하면 이전 값을 유
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('최초 설정부터 달성·취소·통계·알림 기준과 재실행 복원이 함께 일치한다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-mvp-flow-'))
+  const path = join(dir, 'test.sqlite')
+  let now = new Date('2026-11-14T03:00:00.000Z')
+  let db
+  try {
+    db = new AppDatabase(path, () => now)
+    assert.equal(db.readState().status, 'setup-required')
+    let state = db.completeSetup({ requestId: 'setup-flow', goalMl: 500, cupMl: 250 })
+    const goalId = state.goalId
+    const reminders = { enabled: true, intervalMinutes: 60, startTime: '09:00', endTime: '21:00' }
+    db.saveReminderSettings(reminders)
+    const firstTime = now.toISOString()
+    state = db.recordCup({ requestId: 'flow-first', expectedGoalId: goalId, day: state.day }).state
+    assert.equal(state.todayMl, 250)
+    assert.equal(state.growthPoints, 0)
+    assert.equal(db.readReminderContext().latestRecordAt, firstTime)
+
+    now = new Date('2026-11-14T04:00:00.000Z')
+    state = db.recordCup({ requestId: 'flow-second', expectedGoalId: goalId, day: state.day }).state
+    assert.equal(state.todayMl, 500)
+    assert.equal(state.growthPoints, 1000)
+    assert.equal(db.readStatistics().days.at(-1).achieved, true)
+    assert.equal(db.readReminderContext().todayMl, 500)
+
+    state = db.cancelWater({
+      requestId: 'flow-undo',
+      kind: 'latest',
+      expectedGoalId: goalId,
+      day: state.day,
+      recordId: state.todayRecords[0].id
+    }).state
+    assert.equal(state.todayMl, 250)
+    assert.equal(state.growthPoints, 0)
+    assert.equal(db.readStatistics().days.at(-1).achieved, false)
+    assert.equal(db.readReminderContext().latestRecordAt, firstTime)
+
+    now = new Date('2026-11-14T04:15:00.000Z')
+    state = db.recordCup({ requestId: 'flow-again', expectedGoalId: goalId, day: state.day }).state
+    assert.equal(state.growthPoints, 1000)
+    state = db.cancelWater({
+      requestId: 'flow-undo-all',
+      kind: 'today',
+      expectedGoalId: goalId,
+      day: state.day,
+      expectedRecordIds: state.todayRecords.map((record) => record.id)
+    }).state
+    assert.equal(state.goalId, goalId)
+    assert.equal(state.todayMl, 0)
+    assert.equal(state.growthPoints, 0)
+    assert.equal(db.readStatistics().days.at(-1).achieved, false)
+    assert.equal(db.readReminderContext().latestRecordAt, null)
+    db.close()
+
+    db = new AppDatabase(path, () => now)
+    assert.equal(db.readState().goalId, goalId)
+    assert.equal(db.readState().todayMl, 0)
+    assert.equal(db.readState().growthPoints, 0)
+    assert.deepEqual(db.readReminderSettings(), reminders)
+    assert.equal(db.readStatistics().days.at(-1).achieved, false)
+  } finally {
+    db?.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

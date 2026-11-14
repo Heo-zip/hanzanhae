@@ -28,7 +28,7 @@
 ## 그다음 작업
 
 1. [식물 상태 기반 macOS 알림](features/plant-reminders-PLAN.md)의 설정과 알림 요청을 구현했고 자동 검사와 사용자 알림 표시·클릭 확인을 마쳤다. 간격 경과 후 자동 알림 확인은 남았다. [오류 기록](features/plant-reminders-macos-permission-ERROR.md)을 따른다.
-2. 첫 설정부터 물 기록·취소·성장·통계·재실행까지 MVP 전체 흐름을 직접 사용하며 점검하고, Dock 위치 반응·실제 Mac 환경과 패키징은 준비 상태에 따라 검증한다.
+2. 첫 설정부터 물 기록·취소·성장·통계·재실행까지 임시 데이터로 통합 검증했다. Dock 위치 반응·실제 다중 모니터와 패키징은 별도로 검증한다. [통합 검증 결과](features/mvp-integration-REPORT.md)
 3. MediaPipe 동작 감지의 정확도·권한·성능은 이후 별도로 실험한다. 제안과 미정 항목은 [제품 개요](product.md#mvp-이후-아이디어)를 따른다.
-4. [Issue #25](https://github.com/Heo-zip/hanzanhae/issues/25)에서 알림 간격·시간 선택창과 개발 앱의 알림 실패를 개선했다. 개발용 테스트 알림의 실제 시스템 배너 표시와 작은 창 확인은 남았다. [오류 기록](features/plant-reminders-development-signature-ERROR.md)
+4. [Issue #25](https://github.com/Heo-zip/hanzanhae/issues/25)에서 알림 간격·시간 선택창과 개발 앱의 알림 실패를 개선했고 사용자가 알림 정상 동작을 확인했다. 작은 창은 별도 확인한다. [오류 기록](features/plant-reminders-development-signature-ERROR.md)
 5. 화분 커서 문제에 대응 코드를 적용했다. [Issue #20](https://github.com/Heo-zip/hanzanhae/issues/20)에서 실제 macOS 커서와 클릭 통과·드래그·물뿌리개 동작을 확인한다. [오류 기록](features/garden-cursor-feedback-ERROR.md)

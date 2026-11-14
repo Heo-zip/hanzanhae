@@ -16,7 +16,7 @@
 - 정원은 일반 창 위·Dock 아래에 표시하고 전체 화면을 포함한 작업 공간에 보이도록 macOS 패널로 설정한다. 사용자가 전체 화면 문제의 수정 후 동작을 확인했다. 직접 끌어 옮긴 위치와 항상 위 여부를 저장하며 화면 밖 위치를 복구한다. 설정에서 Dock 위·화면 바닥을 선택할 수 있다.
 - 식물 상태 기반 알림의 설정·저장·시간 조건과 시스템 알림 요청을 구현했다. 기본은 꺼짐이며 사용자가 알림 표시와 클릭 후 대시보드 열기를 확인했다. 간격 경과 후 자동 알림은 [권한 오류 기록](features/plant-reminders-macos-permission-ERROR.md)을 참고해 확인한다.
 - 알림 간격 화살표를 정렬하고 시작·종료 시간에 24시간·1분 단위 선택창을 적용했다. 별도 데이터의 macOS Electron에서 화면, 키보드 조작, 저장과 재실행 복원을 확인했다.
-- macOS 개발 실행에서 서명된 별도 Electron을 사용하도록 바꾸고 테스트 알림 요청 성공을 확인했다. 시스템 배너 표시와 장시간 후 자동 발송은 추가 확인이 필요하다. [오류 기록](features/plant-reminders-development-signature-ERROR.md)
+- macOS 개발 실행에서 서명된 별도 Electron을 사용하도록 바꿨다. 사용자가 macOS의 개발 앱 알림을 허용한 뒤 정상 작동을 확인했다. 장시간 후 자동 발송은 추가 확인이 필요하다. [오류 기록](features/plant-reminders-development-signature-ERROR.md)
 - 화분 커서 문제에 클릭 통과 해제 후 커서 재계산과 화분 호버 표시를 적용했다. 실제 macOS 커서와 클릭·드래그 회귀는 확인이 남았다. [오류 기록](features/garden-cursor-feedback-ERROR.md)
 
 ## 아직 구현하지 않은 기능
@@ -27,6 +27,8 @@
 - MediaPipe 물 마시기 감지는 [MVP 이후 제안](product.md#mvp-이후-아이디어)이며 아직 구현하지 않았다. 완전히 종료된 앱의 알림도 지원하지 않는다.
 
 ## 검증과 제한
+
+- [Issue #27](https://github.com/Heo-zip/hanzanhae/issues/27)에서 임시 데이터의 실제 Electron으로 최초 설정·물 기록·목표 달성·최근 취소·전체 취소·재실행과 정원에서 대시보드로의 기록 동기화를 확인했다. 저장소 34개·정원 위치 3개·알림 12개 테스트와 린트·빌드를 통과했다. [통합 검증 결과](features/mvp-integration-REPORT.md)
 
 - Issue #15에서 저장소 테스트 31개·좌표 테스트 3개, 실제 Electron의 테스트 입력 드래그·실패·숨기기·재실행과 로컬 macOS arm64 ad-hoc 패키지를 확인했다. 물리 마우스와 실제 다중 모니터 QA는 남았다.
 
