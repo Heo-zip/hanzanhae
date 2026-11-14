@@ -23,12 +23,12 @@ import {
 
 let database: AppDatabase | undefined
 
-function getDatabase(): AppDatabase {
+export function getDatabase(): AppDatabase {
   if (!database) database = new AppDatabase(join(app.getPath('userData'), 'hanzanhae.sqlite'))
   return database
 }
 
-function trusted(event: Electron.IpcMainInvokeEvent): boolean {
+export function trusted(event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): boolean {
   if (!BrowserWindow.fromWebContents(event.sender) || event.senderFrame !== event.sender.mainFrame)
     return false
   try {

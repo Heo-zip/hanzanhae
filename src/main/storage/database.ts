@@ -8,7 +8,8 @@ import type {
   CancelWaterInput,
   PlantStatus,
   WaterStatistics,
-  DailyStatistics
+  DailyStatistics,
+  GardenSettings
 } from '../../shared/appState'
 
 export class AlreadyConfiguredError extends Error {}
@@ -39,7 +40,7 @@ export class AppDatabase {
     try {
       this.db.exec('PRAGMA foreign_keys = ON')
       const version = Number(this.db.prepare('PRAGMA user_version').get()?.user_version)
-      if (version > 5) throw new Error('지원하지 않는 데이터베이스 버전')
+      if (version > 7) throw new Error('지원하지 않는 데이터베이스 버전')
       if (version === 0) {
         this.db.exec(`
           BEGIN IMMEDIATE;
@@ -88,6 +89,38 @@ export class AppDatabase {
           .prepare('INSERT INTO plant_vitality SELECT id, 80, ? FROM plant_state')
           .run(this.now().toISOString())
         this.db.exec('PRAGMA user_version = 5; COMMIT;')
+      }
+      if (version < 6) {
+        this.db.exec(`
+          BEGIN IMMEDIATE;
+          CREATE TABLE garden_settings (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            placement TEXT NOT NULL CHECK(placement IN ('dock', 'floor')),
+            always_on_top INTEGER NOT NULL CHECK(always_on_top IN (0, 1)),
+            x INTEGER, y INTEGER,
+            CHECK((x IS NULL AND y IS NULL) OR (x IS NOT NULL AND y IS NOT NULL))
+          );
+          INSERT INTO garden_settings VALUES (1, 'dock', 1, NULL, NULL);
+          PRAGMA user_version = 6;
+          COMMIT;
+        `)
+      }
+      if (version < 7) {
+        this.db.exec(`
+          BEGIN IMMEDIATE;
+          ALTER TABLE garden_settings RENAME TO previous_garden_settings;
+          CREATE TABLE garden_settings (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            placement TEXT NOT NULL CHECK(placement IN ('dock', 'floor', 'custom')),
+            always_on_top INTEGER NOT NULL CHECK(always_on_top IN (0, 1)),
+            x INTEGER, y INTEGER,
+            CHECK((x IS NULL AND y IS NULL) OR (x IS NOT NULL AND y IS NOT NULL))
+          );
+          INSERT INTO garden_settings SELECT * FROM previous_garden_settings;
+          DROP TABLE previous_garden_settings;
+          PRAGMA user_version = 7;
+          COMMIT;
+        `)
       }
       // 마지막 저장 이후는 앱이 꺼져 있던 시간으로 보수적으로 계산한다.
       this.settleVitality('offline')
@@ -227,6 +260,50 @@ export class AppDatabase {
       day,
       ...plantStatus
     }
+  }
+
+  readGardenSettings(): GardenSettings {
+    const row = this.db
+      .prepare('SELECT placement, always_on_top, x, y FROM garden_settings WHERE id = 1')
+      .get()
+    if (
+      !row ||
+      (row.placement !== 'dock' && row.placement !== 'floor' && row.placement !== 'custom') ||
+      (row.always_on_top !== 0 && row.always_on_top !== 1)
+    )
+      throw new Error('유효하지 않은 정원 설정')
+    const x = row.x === null ? null : Number(row.x)
+    const y = row.y === null ? null : Number(row.y)
+    if (
+      (x === null) !== (y === null) ||
+      (x !== null && (!Number.isSafeInteger(x) || Math.abs(x) > 10_000_000)) ||
+      (y !== null && (!Number.isSafeInteger(y) || Math.abs(y) > 10_000_000))
+    )
+      throw new Error('유효하지 않은 정원 위치')
+    return { placement: row.placement, alwaysOnTop: row.always_on_top === 1, x, y }
+  }
+
+  saveGardenSettings(settings: GardenSettings): GardenSettings {
+    const validCoordinate = (n: number | null): boolean =>
+      n === null || (Number.isSafeInteger(n) && Math.abs(n) <= 10_000_000)
+    if (
+      !settings ||
+      (settings.placement !== 'dock' &&
+        settings.placement !== 'floor' &&
+        settings.placement !== 'custom') ||
+      typeof settings.alwaysOnTop !== 'boolean' ||
+      !validCoordinate(settings.x) ||
+      !validCoordinate(settings.y) ||
+      (settings.x === null) !== (settings.y === null)
+    )
+      throw new InvalidSetupError()
+    const result = this.db
+      .prepare(
+        'UPDATE garden_settings SET placement = ?, always_on_top = ?, x = ?, y = ? WHERE id = 1'
+      )
+      .run(settings.placement, settings.alwaysOnTop ? 1 : 0, settings.x, settings.y)
+    if (result.changes !== 1) throw new Error('정원 설정이 없어요')
+    return this.readGardenSettings()
   }
 
   readStatistics(): WaterStatistics {

@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import type { AppState } from '../../../../shared/appState'
 import { useRecordCup } from '../water/useRecordCup'
 import { useCancelWater } from '../water/useCancelWater'
@@ -17,6 +17,46 @@ function Garden({
   const [pouring, setPouring] = useState(false)
   const [showUndo, setShowUndo] = useState(false)
   const [watered, setWatered] = useState(false)
+  const [dragError, setDragError] = useState('')
+  const gesture = useRef<{ id: number; x: number; y: number; moved: boolean } | null>(null)
+  const suppressClick = useRef(false)
+
+  function startDrag(event: PointerEvent<HTMLButtonElement>): void {
+    if (event.button !== 0 || pouring || !window.gardenWindow) return
+    setDragError('')
+    suppressClick.current = false
+    gesture.current = { id: event.pointerId, x: event.screenX, y: event.screenY, moved: false }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    window.gardenWindow.beginDrag({ x: event.screenX, y: event.screenY })
+  }
+
+  function moveDrag(event: PointerEvent<HTMLButtonElement>): void {
+    const active = gesture.current
+    if (!active || active.id !== event.pointerId) return
+    if (!active.moved && Math.hypot(event.screenX - active.x, event.screenY - active.y) < 5) return
+    active.moved = true
+    window.gardenWindow?.moveDrag({ x: event.screenX, y: event.screenY })
+  }
+
+  function cancelDrag(event: PointerEvent<HTMLButtonElement>): void {
+    if (gesture.current?.id !== event.pointerId) return
+    gesture.current = null
+    suppressClick.current = false
+    window.gardenWindow?.cancelDrag()
+  }
+
+  function endDrag(event: PointerEvent<HTMLButtonElement>): void {
+    const active = gesture.current
+    if (!active || active.id !== event.pointerId) return
+    gesture.current = null
+    suppressClick.current = active.moved
+    void window.gardenWindow
+      ?.endDrag({ x: event.screenX, y: event.screenY })
+      .then((result) => {
+        if (!result.ok) setDragError('위치를 저장하지 못했어요. 다시 옮겨 주세요.')
+      })
+      .catch(() => setDragError('위치를 저장하지 못했어요. 다시 옮겨 주세요.'))
+  }
   const plant = plants[plantIndex(state.plantStage)]
   const source = plantImage(state.plantStage, state.plantVitality, watered)
   const rim =
@@ -94,10 +134,15 @@ function Garden({
     const onMouseMove = (event: MouseEvent): void => {
       const target = event.target
       const isInteractive = target instanceof Element && target.closest('[data-garden-interactive]')
-      updatePassthrough(!isInteractive)
+      updatePassthrough(!gesture.current && !isInteractive)
     }
 
-    const onMouseLeave = (): void => updatePassthrough(true)
+    const onMouseLeave = (): void => updatePassthrough(!gesture.current)
+    const unsubscribe = window.gardenWindow?.onDragCancelled(() => {
+      gesture.current = null
+      suppressClick.current = false
+      updatePassthrough(true)
+    })
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseleave', onMouseLeave)
     updatePassthrough(true)
@@ -105,6 +150,7 @@ function Garden({
     return () => {
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseleave', onMouseLeave)
+      unsubscribe?.()
       updatePassthrough(true)
     }
   }, [])
@@ -119,7 +165,15 @@ function Garden({
           aria-label={isOpen ? '물뿌리개 닫기' : '물뿌리개 보기'}
           aria-expanded={isOpen}
           aria-controls="garden-watering-can"
+          onPointerDown={startDrag}
+          onPointerMove={moveDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={cancelDrag}
           onClick={() => {
+            if (suppressClick.current) {
+              suppressClick.current = false
+              return
+            }
             if (!pouring) setIsOpen((open) => !open)
           }}
         >
@@ -191,9 +245,9 @@ function Garden({
             </svg>
           </button>
         )}
-        {(error || cancelError) && (
+        {(error || cancelError || dragError) && (
           <span className="garden-error" role="alert" data-garden-interactive>
-            {cancelError || error}
+            {cancelError || error || dragError}
             {retryable && (
               <button
                 type="button"

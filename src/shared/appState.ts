@@ -77,3 +77,16 @@ export type WaterStatistics = {
 export type StatisticsResult =
   | { ok: true; statistics: WaterStatistics }
   | { ok: false; code: 'VALIDATION_ERROR' | 'STORAGE_ERROR' }
+
+export type GardenPlacement = 'dock' | 'floor' | 'custom'
+export type GardenPreset = Exclude<GardenPlacement, 'custom'>
+export type GardenSettings = {
+  placement: GardenPlacement
+  alwaysOnTop: boolean
+  x: number | null
+  y: number | null
+}
+export type GardenSettingsChange =
+  { kind: 'placement'; placement: GardenPreset } | { kind: 'alwaysOnTop'; alwaysOnTop: boolean }
+export type GardenSettingsResult =
+  { ok: true; settings: GardenSettings } | { ok: false; code: 'VALIDATION_ERROR' | 'STORAGE_ERROR' }

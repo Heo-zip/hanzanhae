@@ -2,7 +2,9 @@
 
 > 상태: 최초 설정·상태 조회·목표 변경·한 잔 용량 변경과 물 한 잔 기록과 취소를 구현했다. 생기·성장은 기존 상태 조회와 기록·취소 API에 포함되며 통계는 `getStatistics`로 조회한다.
 
-현재 preload는 `gardenWindow.setMousePassthrough`, `hanzanhae.getState`, `hanzanhae.getStatistics`, `hanzanhae.completeSetup`, `hanzanhae.updateSettings`, `hanzanhae.recordCup`, `hanzanhae.cancelWater`, `hanzanhae.onStateChanged`, `hanzanhae.onWaterRecorded`를 공개한다. 메인은 정해진 앱 화면과 메인 프레임을 검증하며, 최초 설정과 설정 변경 쓰기는 대시보드에서만 허용한다. 상태는 최초 설정 전·활성 목표·목표 없음으로 나누고 실패는 `VALIDATION_ERROR`·`ALREADY_CONFIGURED`·`STALE_STATE`·`STORAGE_ERROR`로 반환한다. 최초 설정의 같은 요청은 최초 성공 결과를, 설정 변경의 같은 요청은 현재 상태를 반환한다. 호출자는 현재 상태를 다시 조회한다. 설정 변경 API의 `kind`는 `cup`, `stop`, `goal`이며, 목표 변경은 화면에 표시한 목표 ID·한국 날짜·기존 총량이 현재와 일치할 때만 처리한다.
+현재 preload는 정원 창의 클릭 통과·드래그 시작/이동/종료/취소와 드래그 취소 알림, `hanzanhae.getState`, `hanzanhae.getStatistics`, `hanzanhae.getGardenSettings`, `hanzanhae.updateGardenSettings`, `hanzanhae.onGardenSettingsChanged`, `hanzanhae.completeSetup`, `hanzanhae.updateSettings`, `hanzanhae.recordCup`, `hanzanhae.cancelWater`, `hanzanhae.onStateChanged`, `hanzanhae.onWaterRecorded`를 공개한다. 메인은 정해진 앱 화면과 메인 프레임을 검증하며, 최초 설정과 설정 변경 쓰기는 대시보드에서만 허용한다. 상태는 최초 설정 전·활성 목표·목표 없음으로 나누고 실패는 `VALIDATION_ERROR`·`ALREADY_CONFIGURED`·`STALE_STATE`·`STORAGE_ERROR`로 반환한다. 최초 설정의 같은 요청은 최초 성공 결과를, 설정 변경의 같은 요청은 현재 상태를 반환한다. 호출자는 현재 상태를 다시 조회한다. 설정 변경 API의 `kind`는 `cup`, `stop`, `goal`이며, 목표 변경은 화면에 표시한 목표 ID·한국 날짜·기존 총량이 현재와 일치할 때만 처리한다.
+
+정원 위치 설정 조회·변경은 대시보드 메인 프레임에만 허용한다. 드래그 요청은 정원 메인 프레임에서만 허용하고 좌표를 검증한다. 변경 완료 시에만 저장하며 실패하면 이전 창 위치·항상 위 상태로 복구한다.
 
 ## 원칙
 
