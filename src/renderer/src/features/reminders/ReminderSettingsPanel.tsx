@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReminderSettings } from '../../../../shared/appState'
+import IntervalSelect from './IntervalSelect'
 import './reminders.css'
 
 export default function ReminderSettingsPanel(): React.JSX.Element {
@@ -115,20 +116,11 @@ export default function ReminderSettingsPanel(): React.JSX.Element {
                   <b>알림 간격</b>
                   <small>마지막 기록 이후 기다리는 시간이에요</small>
                 </div>
-                <select
-                  aria-label="알림 간격"
+                <IntervalSelect
                   value={draft.intervalMinutes}
                   disabled={busy}
-                  onChange={(event) =>
-                    setDraft({ ...draft, intervalMinutes: Number(event.target.value) })
-                  }
-                >
-                  {Array.from({ length: 8 }, (_, i) => (i + 1) * 60).map((minutes) => (
-                    <option key={minutes} value={minutes}>
-                      {minutes / 60}시간
-                    </option>
-                  ))}
-                </select>
+                  onChange={(intervalMinutes) => setDraft({ ...draft, intervalMinutes })}
+                />
               </div>
               <div className="set reminder-times">
                 <div>

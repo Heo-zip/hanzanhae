@@ -30,5 +30,5 @@
 1. [식물 상태 기반 macOS 알림](features/plant-reminders-PLAN.md)의 설정과 알림 요청을 구현했고 자동 검사와 사용자 알림 표시·클릭 확인을 마쳤다. 간격 경과 후 자동 알림 확인은 남았다. [오류 기록](features/plant-reminders-macos-permission-ERROR.md)을 따른다.
 2. 첫 설정부터 물 기록·취소·성장·통계·재실행까지 MVP 전체 흐름을 직접 사용하며 점검하고, Dock 위치 반응·실제 Mac 환경과 패키징은 준비 상태에 따라 검증한다.
 3. MediaPipe 동작 감지의 정확도·권한·성능은 이후 별도로 실험한다. 제안과 미정 항목은 [제품 개요](product.md#mvp-이후-아이디어)를 따른다.
-4. 사용자가 요청한 알림 간격 선택창과 설정 화면 UI는 [Issue #19](https://github.com/Heo-zip/hanzanhae/issues/19)에서 후속 개선한다.
+4. [Issue #19](https://github.com/Heo-zip/hanzanhae/issues/19)의 알림 간격 선택창을 개선하고 macOS Electron에서 목록과 키 이벤트를 확인했다. 작은 창과 물리 마우스·키보드 확인은 남았다.
 5. 화분에 마우스를 올려도 클릭 가능한 커서가 표시되지 않는 문제는 [Issue #20](https://github.com/Heo-zip/hanzanhae/issues/20)에서 후속 확인한다. 클릭 통과·드래그·물뿌리개 동작도 함께 검증한다.
