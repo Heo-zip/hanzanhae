@@ -7,7 +7,15 @@ import type {
   GardenSettingsResult
 } from '../../shared/appState'
 import { getDatabase, trusted } from '../storage/ipc'
-import { GARDEN_SIZE, presetPosition, restorePosition, type Point } from './gardenPosition'
+import {
+  GARDEN_LEFT_PADDING,
+  GARDEN_SIZE,
+  presetPosition,
+  restorePosition,
+  toGardenPosition,
+  toWindowPosition,
+  type Point
+} from './gardenPosition'
 
 let gardenWindow: BrowserWindow | null = null
 let isQuitting = false
@@ -19,11 +27,12 @@ function screenLayout(): { displays: ReturnType<typeof screen.getAllDisplays>; p
 
 function getPosition(window: BrowserWindow): Point {
   const [x, y] = window.getPosition()
-  return { x, y }
+  return toGardenPosition({ x, y })
 }
 
 function applyPosition(window: BrowserWindow, point: Point): void {
-  window.setPosition(Math.round(point.x), Math.round(point.y))
+  const position = toWindowPosition(point)
+  window.setPosition(Math.round(position.x), Math.round(position.y))
 }
 
 function fromGarden(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): boolean {
@@ -242,11 +251,11 @@ export function showGardenWindow(): void {
   const { displays, primaryId } = screenLayout()
   const saved = settings.x === null || settings.y === null ? null : { x: settings.x, y: settings.y }
   const initial = restorePosition(saved, settings.placement, displays, primaryId)
-  const windowWidth = GARDEN_SIZE.width
+  const windowWidth = GARDEN_SIZE.width + GARDEN_LEFT_PADDING
   const windowHeight = GARDEN_SIZE.height
 
   gardenWindow = new BrowserWindow({
-    x: initial.x,
+    x: toWindowPosition(initial).x,
     y: initial.y,
     width: windowWidth,
     height: windowHeight,

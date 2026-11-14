@@ -12,7 +12,8 @@ const source = ts.transpileModule(readFileSync(path, 'utf8'), {
 const moduleUnderTest = new Module(path)
 moduleUnderTest.filename = path
 moduleUnderTest._compile(source, path)
-const { restorePosition, presetPosition } = moduleUnderTest.exports
+const { restorePosition, presetPosition, toWindowPosition, toGardenPosition, GARDEN_LEFT_PADDING } =
+  moduleUnderTest.exports
 const primary = {
   id: 1,
   bounds: { x: 0, y: 0, width: 1440, height: 900 },
@@ -23,6 +24,18 @@ const external = {
   bounds: { x: -1920, y: -100, width: 1920, height: 1080 },
   workArea: { x: -1920, y: -76, width: 1920, height: 980 }
 }
+
+test('그림자 여백을 추가해도 저장된 화분 좌표와 복원 위치를 유지한다', () => {
+  for (const point of [
+    { x: 300, y: 400 },
+    { x: -1300, y: 400 },
+    { x: 0, y: 0 }
+  ]) {
+    const windowPosition = toWindowPosition(point)
+    assert.deepEqual(windowPosition, { x: point.x - GARDEN_LEFT_PADDING, y: point.y })
+    assert.deepEqual(toGardenPosition(windowPosition), point)
+  }
+})
 
 test('기본 위치와 Dock 위·화면 바닥 선택은 수평 좌표를 유지한다', () => {
   assert.deepEqual(restorePosition(null, 'dock', [primary], 1), { x: 1272, y: 610 })
