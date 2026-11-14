@@ -99,7 +99,16 @@ export default function IntervalSelect({ value, disabled, onChange }: Props): Re
           setOpen((current) => !current)
         }}
       >
-        {value / 60}시간 <span aria-hidden="true">⌄</span>
+        {value / 60}시간
+        <svg className="reminder-chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path
+            d="m4 6 4 4 4-4"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </button>
       {open &&
         createPortal(

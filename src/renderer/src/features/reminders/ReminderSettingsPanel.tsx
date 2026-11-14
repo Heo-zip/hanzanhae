@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReminderSettings } from '../../../../shared/appState'
 import IntervalSelect from './IntervalSelect'
+import TimeSelect from './TimeSelect'
 import './reminders.css'
 
 export default function ReminderSettingsPanel(): React.JSX.Element {
@@ -52,7 +53,11 @@ export default function ReminderSettingsPanel(): React.JSX.Element {
       const result = await window.hanzanhae.updateReminderSettings(draft)
       if (result.ok) {
         setDraft(result.settings)
-        if (result.activation === 'failed' || result.activation === 'unsupported') {
+        if (result.activation === 'development-failed') {
+          setError(
+            '설정은 저장했어요. Mac 시스템 설정 → 알림에서 한잔해 개발의 알림을 확인해 주세요.'
+          )
+        } else if (result.activation === 'failed' || result.activation === 'unsupported') {
           setError(
             '설정은 저장했지만 알림을 표시하지 못했어요. Mac 알림 권한을 확인한 뒤 테스트 알림을 다시 눌러 주세요.'
           )
@@ -78,6 +83,10 @@ export default function ReminderSettingsPanel(): React.JSX.Element {
       const result = await window.hanzanhae.testReminder()
       if (result.ok)
         setMessage('테스트 알림을 보냈어요. 보이지 않으면 Mac의 알림 설정을 확인해 주세요.')
+      else if (result.code === 'DEV_NOTIFICATION_ERROR')
+        setError(
+          '알림을 보내지 못했어요. Mac 시스템 설정 → 알림에서 한잔해 개발의 알림을 확인해 주세요.'
+        )
       else setError('알림을 표시하지 못했어요. Mac의 시스템 설정에서 한잔해 알림을 확인해 주세요.')
     } catch {
       setError('알림을 표시하지 못했어요. 다시 시도해 주세요.')
@@ -128,20 +137,18 @@ export default function ReminderSettingsPanel(): React.JSX.Element {
                   <small>한국 시간 기준이에요</small>
                 </div>
                 <div className="reminder-time-fields">
-                  <input
-                    type="time"
-                    aria-label="알림 시작 시간"
+                  <TimeSelect
+                    label="알림 시작 시간"
                     value={draft.startTime}
                     disabled={busy}
-                    onChange={(event) => setDraft({ ...draft, startTime: event.target.value })}
+                    onChange={(startTime) => setDraft({ ...draft, startTime })}
                   />
                   <span>~</span>
-                  <input
-                    type="time"
-                    aria-label="알림 종료 시간"
+                  <TimeSelect
+                    label="알림 종료 시간"
                     value={draft.endTime}
                     disabled={busy}
-                    onChange={(event) => setDraft({ ...draft, endTime: event.target.value })}
+                    onChange={(endTime) => setDraft({ ...draft, endTime })}
                   />
                 </div>
               </div>

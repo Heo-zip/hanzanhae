@@ -25,6 +25,7 @@ const flush = () => new Promise((resolve) => setImmediate(resolve))
 
 function createHarness(mode = 'show', initiallyEnabled = true) {
   const app = new EventEmitter()
+  app.isPackaged = true
   const powerMonitor = new EventEmitter()
   const handlers = new Map()
   const windows = { webContents: {} }
@@ -238,6 +239,24 @@ test('알림을 지원하지 않으면 실패를 반환하고 발송 시각을 �
     })
     assert.equal(h.instances.length, 0)
     assert.equal(h.writes.length, 0)
+  } finally {
+    h.app.emit('will-quit')
+  }
+})
+
+test('macOS 개발 앱의 알림 실패를 일반 패키지 실패와 구분한다', async () => {
+  if (process.platform !== 'darwin') return
+  const h = createHarness('failed', false)
+  h.app.isPackaged = false
+  try {
+    const event = { trusted: true, sender: h.windows.webContents }
+    const result = await h.handlers.get('reminder:test')(event)
+    assert.deepEqual(result, { ok: false, code: 'DEV_NOTIFICATION_ERROR' })
+    const update = await h.handlers.get('reminder:update-settings')(event, {
+      ...h.context.settings,
+      enabled: true
+    })
+    assert.equal(update.activation, 'development-failed')
   } finally {
     h.app.emit('will-quit')
   }
