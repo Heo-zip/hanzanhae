@@ -33,3 +33,5 @@ initial-setup-REPORT.md        # 기능 구현과 검증을 마친 뒤
 - 계획과 결과는 해당 작업 시점의 기록이다. 이후 달라진 현재 동작·검증 범위는 [현재 상태](../CONTEXT.md)에서 확인한다.
 
 - 횟수 목표와 텀블러 기록 분리: [PLAN](drink-count-goal-PLAN.md), [REPORT](drink-count-goal-REPORT.md), [이전 테스트 오류](drink-count-goal-test-migration-ERROR.md). 카메라 자동 감지는 후속 작업이다.
+
+- 카메라 자동 감지 (고개 방식 실험 중): [PLAN](camera-drink-detection-PLAN.md), [REPORT](camera-drink-detection-REPORT.md), [현재 기술 구현 기록](camera-drink-detection-TECH.md), [로컬 모델 로딩 오류](camera-drink-detection-local-wasm-ERROR.md), [텀블러 감지 누락](camera-drink-detection-recognition-ERROR.md), [미리보기 ref 린트](camera-drink-detection-preview-lint-ERROR.md).

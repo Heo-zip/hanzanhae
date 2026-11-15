@@ -1,6 +1,8 @@
 # 현재 작업 상태
 
-> 진행 중: [#34](https://github.com/Heo-zip/hanzanhae/issues/34)에서 하루 횟수 목표와 텀블러 용량 기록 분리를 구현했다. 카메라·자동 감지는 후속 작업이며 구현하지 않았다. 자동 검사와 별도 프로필 Electron 화면 검증을 마쳤다.
+> 진행: [#36](https://github.com/Heo-zip/hanzanhae/issues/36) 카메라 감지는 고개 각도·손목·용기 잡음을 단계로 보는 방식으로 재설계했고, 사용자가 이전 방식보다 낫다고 확인해 기존 방식을 제거했다(2026-11-16). 후보 수만 표시하며 자동 기록은 연결하지 않았다. 다음은 동작별 놓침·오감지 기록과 확인 후 기록 방식 검토다. [기술 기록](features/camera-drink-detection-TECH.md), [기획](features/camera-drink-detection-PLAN.md)
+
+> 완료: [#34](https://github.com/Heo-zip/hanzanhae/issues/34) 하루 횟수 목표와 텀블러 기록 분리는 [PR #35](https://github.com/Heo-zip/hanzanhae/pull/35)로 develop에 병합했다.
 
 > 2026-11-14 기준 코드와 이번 대화의 검증 기록을 바탕으로 정리했다. 작업 후 변경된 내용과 검증 범위를 갱신한다.
 
@@ -27,7 +29,7 @@
 - 생기와 성장에 사용한 수치는 사용하며 조정할 임시값이다.
 - 로그인 시 자동 실행 설정.
 - Dock 자동 숨김·확대에 맞춘 실시간 위치 추적. [향후 실험](features.md#정원과-창)으로 남아 있다.
-- MediaPipe 물 마시기 감지는 [MVP 이후 제안](product.md#mvp-이후-아이디어)이며 아직 구현하지 않았다. 완전히 종료된 앱의 알림도 지원하지 않는다.
+- MediaPipe 물 마시기 자동 기록은 오작동으로 보류했다. 실험 브랜치는 남아 있으나 사용자 기록에는 연결하지 않았다. 완전히 종료된 앱의 알림도 지원하지 않는다.
 
 ## 검증과 제한
 
