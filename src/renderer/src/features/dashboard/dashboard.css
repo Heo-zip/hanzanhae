@@ -154,14 +154,14 @@ button {
   border-radius: 14px;
   overflow: hidden;
   display: grid;
-  grid-template-columns: 232px 1fr;
+  grid-template-columns: 208px 1fr;
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.08),
     0 24px 60px rgba(20, 30, 40, 0.18);
 }
 .side {
   background: var(--side);
-  padding: 18px 20px 24px;
+  padding: 18px 16px 24px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -184,7 +184,7 @@ button {
   transform: scale(1.03);
 }
 .brand .mark {
-  width: 156px;
+  width: 140px;
   height: auto;
   transition: transform 0.2s;
 }
@@ -622,11 +622,13 @@ main {
 }
 .drink.drink-outline {
   border: 1.5px solid var(--brand);
-  background: #fff;
-  color: var(--brand);
+  background: var(--card);
+  color: var(--brand-ink);
 }
+/* 배경색은 그대로 두고 테두리만 진하게 바꾼다. */
 .drink.drink-outline:hover {
-  background: var(--brand-soft);
+  filter: none;
+  border-color: var(--brand-ink);
 }
 
 .tiles {
@@ -910,7 +912,29 @@ main {
 
 /* ── 설정: 제목 바로 아래에 설정을 배치한다 ── */
 .settings {
-  max-width: 760px;
+  max-width: 1120px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 48px;
+  align-items: start;
+}
+/* 넓은 내용(카메라·알림)과 안내 문구는 두 열을 모두 쓴다. */
+.settings > .sset.wide,
+.settings > p {
+  grid-column: 1 / -1;
+}
+.settings > .sset:nth-of-type(-n + 2) {
+  border-top: 0;
+  padding-top: 8px;
+}
+@media (max-width: 1179px) {
+  .settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .settings > .sset:nth-of-type(2) {
+    border-top: 1px solid var(--line);
+    padding-top: 28px;
+  }
 }
 .sset {
   display: flex;

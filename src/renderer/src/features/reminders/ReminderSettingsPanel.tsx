@@ -97,7 +97,7 @@ export default function ReminderSettingsPanel(): React.JSX.Element {
   }
 
   return (
-    <section className="sset">
+    <section className="sset wide">
       <div className="sset-head">
         <h2>물 마시기 알림</h2>
       </div>

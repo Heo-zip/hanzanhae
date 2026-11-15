@@ -93,7 +93,8 @@
   flex-direction: column;
   align-items: center;
   background: linear-gradient(180deg, var(--sky-a) 0%, var(--window) 62%);
-  overflow: hidden;
+  /* 언덕 장식이 아래로 넘친다. hidden은 입력칸 자동 포커스 때 영역을 스크롤시켜 내용이 위로 밀리므로 clip을 쓴다. */
+  overflow: clip;
 }
 .window.setup .onboard {
   display: flex;
@@ -159,10 +160,7 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding-bottom: 170px;
-}
-/* 상단 진행 표시 높이를 보정해 첫 화면의 내용 전체를 창 중앙에 놓는다. */
-.ob-body-welcome {
+  /* 상단 진행 표시 높이만큼 보정해 모든 단계의 내용을 창 중앙에 놓는다. */
   padding-bottom: 48px;
 }
 .ob-step {
