@@ -1,4 +1,4 @@
-import { app, BrowserWindow, net, protocol, session } from 'electron'
+import { app, BrowserWindow, ipcMain, net, protocol, session } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -10,7 +10,7 @@ import {
   showGardenWindow
 } from './windows/gardenWindow'
 import { initializeGardenControls } from './gardenControls'
-import { initializeStorageIpc } from './storage/ipc'
+import { initializeStorageIpc, trusted } from './storage/ipc'
 import { initializeReminders } from './reminders/service'
 import { initializeLoginItemIpc } from './loginItem'
 import { initializeUpdates } from './updates'
@@ -59,9 +59,7 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
       contextIsolation: true,
-      nodeIntegration: false,
-      // 대시보드가 숨겨져도 사용자가 켠 카메라 감지를 계속 처리한다.
-      backgroundThrottling: false
+      nodeIntegration: false
     }
   })
 
@@ -75,6 +73,10 @@ function createWindow(): void {
     mainWindow.once('leave-full-screen', () => mainWindow.hide())
     mainWindow.setFullScreen(false)
   })
+  // 화면을 다시 불러오면 카메라도 꺼지므로 숨긴 창의 백그라운드 제한을 기본값으로 되돌린다.
+  mainWindow.webContents.on('did-start-loading', () =>
+    mainWindow.webContents.setBackgroundThrottling(true)
+  )
   mainWindow.on('closed', () => {
     if (dashboardWindow === mainWindow) dashboardWindow = null
   })
@@ -136,6 +138,11 @@ app.whenReady().then(() => {
   initializeStorageIpc(() => dashboardWindow, getGardenWindow)
   initializeGardenWindowIpc(() => dashboardWindow)
   initializeLoginItemIpc(() => dashboardWindow)
+  // 카메라 감지를 켠 동안에만 대시보드가 숨겨져도 분석 타이머를 제한 없이 돌린다.
+  ipcMain.on('camera:set-active', (event, active: unknown) => {
+    if (!trusted(event) || event.sender !== dashboardWindow?.webContents) return
+    if (typeof active === 'boolean') event.sender.setBackgroundThrottling(!active)
+  })
   // 카메라는 대시보드의 메인 프레임만 사용할 수 있다. 마이크·화면 캡처는 허용하지 않는다.
   session.defaultSession.setPermissionCheckHandler((contents, permission, _origin, details) => {
     if (permission !== 'media') return false
