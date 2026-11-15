@@ -1266,6 +1266,10 @@ main {
 .set:last-child {
   border-bottom: 0;
 }
+.set-sub {
+  color: var(--text-sub);
+  font-size: 13px;
+}
 .set b {
   display: block;
   font-size: 15px;

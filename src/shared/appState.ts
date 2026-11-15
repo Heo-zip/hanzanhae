@@ -104,6 +104,11 @@ export type GardenSettingsChange =
 export type GardenSettingsResult =
   { ok: true; settings: GardenSettings } | { ok: false; code: 'VALIDATION_ERROR' | 'STORAGE_ERROR' }
 
+// 로그인 시 자동 실행. needsApproval은 macOS 시스템 설정에서 사용자의 허용이 필요한 상태다.
+export type LoginItemResult =
+  | { ok: true; openAtLogin: boolean; available: boolean; needsApproval?: boolean }
+  | { ok: false; code: 'VALIDATION_ERROR' | 'LOGIN_ITEM_ERROR' }
+
 export type ReminderSettings = {
   enabled: boolean
   intervalMinutes: number

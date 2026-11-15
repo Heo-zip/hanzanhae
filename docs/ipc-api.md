@@ -13,6 +13,7 @@ React는 preload의 허용된 함수만 호출한다. 메인은 앱 화면과 �
 | `recordCup` | 요청 ID, 목표 ID와 날짜를 확인한 뒤 저장된 텀블러 용량으로 물·성장·생기를 기록한다. 횟수는 변경하지 않는다. |
 | `cancelWater` | `latest` 또는 `today`와 확인한 기록 ID를 받아 물 기록과 관련 성장만 취소한다. 오늘 전체 취소는 현재 목표 범위에 한정된다. |
 | `getStatistics` | 날짜별 횟수·목표와 물의 양, 달성·연속 기록 등 최근 통계를 반환한다. 과거 ml 목표는 기존 값으로 유지한다. |
+| `getLoginItem`, `setLoginItem` | macOS 로그인 항목 등록 여부를 시스템에서 읽고 바꾼다. DB에 저장하지 않는다. 대시보드 메인 프레임만 호출할 수 있고, 배포 앱(macOS)에서만 바꿀 수 있다. 시스템 허용이 필요하면 `needsApproval`, 반영되지 않으면 실패를 반환한다. |
 | `onStateChanged`, `onWaterRecorded` | 상태 갱신과 텀블러 물주기 연출을 다른 창에 알린다. |
 
 요청 ID는 중복 저장을 막는다. 오래된 목표·날짜·취소 대상은 `STALE_STATE`, 검증 오류는 `VALIDATION_ERROR`, 저장 오류는 `STORAGE_ERROR`로 구분한다. 취소는 대상 없음과 조정 후 총량 음수 오류도 구분한다.

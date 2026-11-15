@@ -5,7 +5,8 @@ import type {
   WaterStatistics,
   GardenSettings,
   GardenSettingsChange,
-  DrinkActionInput
+  DrinkActionInput,
+  LoginItemResult
 } from '../../../../shared/appState'
 import { useRecordCup } from '../water/useRecordCup'
 import { useCancelWater } from '../water/useCancelWater'
@@ -715,6 +716,37 @@ function Settings({
     }
   }
   const goalId = state.status === 'ready' ? state.goalId : null
+  const [loginItem, setLoginItem] = useState<Extract<LoginItemResult, { ok: true }> | null>(null)
+  const [loginSaving, setLoginSaving] = useState(false)
+  const [loginError, setLoginError] = useState('')
+  useEffect(() => {
+    let active = true
+    void window.hanzanhae
+      .getLoginItem()
+      .then((response) => {
+        if (!active) return
+        if (response.ok) setLoginItem(response)
+        else setLoginError('자동 실행 상태를 불러오지 못했어요.')
+      })
+      .catch(() => active && setLoginError('자동 실행 상태를 불러오지 못했어요.'))
+    return () => {
+      active = false
+    }
+  }, [])
+  async function changeLoginItem(openAtLogin: boolean): Promise<void> {
+    if (loginSaving) return
+    setLoginSaving(true)
+    setLoginError('')
+    try {
+      const response = await window.hanzanhae.setLoginItem(openAtLogin)
+      if (response.ok) setLoginItem(response)
+      else setLoginError('자동 실행 설정을 바꾸지 못했어요. 다시 시도해 주세요.')
+    } catch {
+      setLoginError('자동 실행 설정을 바꾸지 못했어요. 다시 시도해 주세요.')
+    } finally {
+      setLoginSaving(false)
+    }
+  }
 
   async function save(input: SettingsInput): Promise<boolean> {
     if (busy) return false
@@ -974,16 +1006,30 @@ function Settings({
             </div>
             <div className="set">
               <div>
-                <b>로그인 시 자동 실행 (준비 중)</b>
+                <b>로그인 시 자동 실행</b>
+                {loginItem && !loginItem.available && (
+                  <span className="set-sub">설치한 앱에서 바꿀 수 있어요</span>
+                )}
+                {loginItem?.needsApproval && (
+                  <span className="set-sub">
+                    시스템 설정 &gt; 일반 &gt; 로그인 항목에서 한잔해를 허용해 주세요
+                  </span>
+                )}
               </div>
               <button
                 className="switch"
                 role="switch"
-                aria-checked="false"
+                aria-checked={loginItem?.openAtLogin ?? false}
                 aria-label="로그인 시 자동 실행"
-                disabled
+                disabled={!loginItem?.available || loginSaving}
+                onClick={() => void changeLoginItem(!loginItem?.openAtLogin)}
               />
             </div>
+            {loginError && (
+              <p className="water-error" role="alert">
+                {loginError}
+              </p>
+            )}
           </div>
         </section>
         <section className="sset wide">

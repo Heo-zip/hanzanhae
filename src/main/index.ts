@@ -12,6 +12,7 @@ import {
 import { initializeGardenControls } from './gardenControls'
 import { initializeStorageIpc } from './storage/ipc'
 import { initializeReminders } from './reminders/service'
+import { initializeLoginItemIpc } from './loginItem'
 import { initializeUpdates } from './updates'
 import { cameraAssetName, isDashboardUrl } from './camera/security'
 
@@ -125,6 +126,7 @@ app.whenReady().then(() => {
 
   initializeStorageIpc(() => dashboardWindow, getGardenWindow)
   initializeGardenWindowIpc(() => dashboardWindow)
+  initializeLoginItemIpc(() => dashboardWindow)
   // 카메라는 대시보드의 메인 프레임만 사용할 수 있다. 마이크·화면 캡처는 허용하지 않는다.
   session.defaultSession.setPermissionCheckHandler((contents, permission, _origin, details) => {
     if (permission !== 'media') return false

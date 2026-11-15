@@ -12,7 +12,8 @@ import type {
   ReminderSettings,
   ReminderSettingsResult,
   ReminderTestResult,
-  DrinkActionInput
+  DrinkActionInput,
+  LoginItemResult
 } from '../shared/appState'
 
 declare global {
@@ -32,6 +33,8 @@ declare global {
       updateGardenSettings: (change: GardenSettingsChange) => Promise<GardenSettingsResult>
       onGardenSettingsChanged: (callback: () => void) => () => void
       getStatistics: () => Promise<StatisticsResult>
+      getLoginItem: () => Promise<LoginItemResult>
+      setLoginItem: (openAtLogin: boolean) => Promise<LoginItemResult>
       getReminderSettings: () => Promise<ReminderSettingsResult>
       updateReminderSettings: (settings: ReminderSettings) => Promise<ReminderSettingsResult>
       testReminder: () => Promise<ReminderTestResult>
