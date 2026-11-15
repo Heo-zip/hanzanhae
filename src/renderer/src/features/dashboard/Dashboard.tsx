@@ -12,6 +12,7 @@ import { useCancelWater } from '../water/useCancelWater'
 import { isMlInput } from '../water/mlInput'
 import ClearTodayDialog, { type ClearTodaySnapshot } from './ClearTodayDialog'
 import { useWaterStatistics } from '../statistics/useWaterStatistics'
+import { useCameraDetection, type CameraControl } from '../camera/useCameraDetection'
 import ReminderSettingsPanel from '../reminders/ReminderSettingsPanel'
 import { WeekChart, WeekCups } from '../statistics/WaterStatistics'
 import { dayLabel } from '../statistics/dateLabels'
@@ -567,12 +568,83 @@ function History({
 
 type ConfiguredState = Exclude<AppState, { status: 'setup-required' }>
 
+const sipSteps = [
+  { key: 'held', label: '컵이나 병을 들어요' },
+  { key: 'mouth', label: '입으로 가져가요' },
+  { key: 'sip', label: '고개를 젖혀 마셔요' }
+] as const
+
+/**
+ * 카메라가 지금 무엇을 보고 있는지 사용자가 직접 확인하는 화면이다.
+ * 캔버스 ref 콜백과 렌더링 값을 한 객체로 넘기면 react-hooks/refs 규칙에 걸려 따로 받는다.
+ */
+function CameraView({
+  setPreview,
+  sipCount,
+  status
+}: {
+  setPreview: CameraControl['setPreview']
+  sipCount: number
+  status: CameraControl['detectionStatus']
+}): React.JSX.Element {
+  const done = {
+    held: Boolean(status?.held),
+    mouth: status?.handAtMouth === true || status?.sipPhase !== 'idle',
+    sip: status?.sipPhase === 'sipping'
+  }
+  const headHint =
+    status?.headSource === 'face'
+      ? `고개 ${(status.lift ?? 0) > 0 ? '+' : ''}${status.lift}°`
+      : status?.headSource === 'pose'
+        ? '몸 자세로 보고 있어요'
+        : status?.headSource === 'covered'
+          ? '얼굴이 가려져도 이어서 봐요'
+          : '얼굴을 찾고 있어요'
+  return (
+    <div className="camera-view">
+      <div className="camera-preview-frame">
+        <canvas
+          ref={setPreview}
+          className="camera-preview"
+          aria-label="카메라가 인식한 얼굴, 손, 컵을 보여주는 화면"
+        />
+        <div key={sipCount} className="camera-detection-count" role="status">
+          마신 동작 <strong>{sipCount}회</strong>
+        </div>
+      </div>
+      <div className="camera-guide">
+        <ol className="camera-steps" aria-label="마시는 동작 인식 단계">
+          {sipSteps.map((step, index) => (
+            <li key={step.key} className={done[step.key] ? 'on' : ''}>
+              <span className="camera-step-num" aria-hidden="true">
+                {done[step.key] ? '✓' : index + 1}
+              </span>
+              <span>
+                {step.label}
+                {step.key === 'sip' && <small>{headHint}</small>}
+              </span>
+            </li>
+          ))}
+        </ol>
+        <ul className="camera-legend" aria-label="화면 표시">
+          <li className="face">얼굴</li>
+          <li className="cup">컵·병</li>
+          <li className="hand">손</li>
+          <li className="mouth">입</li>
+        </ul>
+      </div>
+    </div>
+  )
+}
+
 function Settings({
   state,
-  refresh
+  refresh,
+  camera
 }: {
   state: ConfiguredState
   refresh: () => Promise<void>
+  camera: CameraControl
 }): React.JSX.Element {
   const [editing, setEditing] = useState(false)
   const [goal, setGoal] = useState('')
@@ -899,6 +971,46 @@ function Settings({
             </div>
           </div>
         </section>
+        <section className="sset">
+          <div className="sset-head">
+            <h2>카메라 감지</h2>
+          </div>
+          <div className="group camera-settings">
+            <div className="set">
+              <div>
+                <b>마시는 동작 알아보기</b>
+                <span className="camera-sub">영상은 이 Mac에서만 보고 저장하지 않아요</span>
+              </div>
+              <button
+                className="switch"
+                role="switch"
+                aria-checked={camera.status !== 'off'}
+                aria-label="카메라 감지"
+                disabled={state.status !== 'ready'}
+                onClick={() => {
+                  if (camera.status === 'off') void camera.start()
+                  else camera.stop()
+                }}
+              />
+            </div>
+            {camera.status === 'on' && (
+              <CameraView
+                setPreview={camera.setPreview}
+                sipCount={camera.sipCount}
+                status={camera.detectionStatus}
+              />
+            )}
+            {(state.status !== 'ready' || camera.status === 'starting' || camera.message) && (
+              <p className="camera-note" role="status">
+                {state.status !== 'ready'
+                  ? '목표를 먼저 설정해 주세요.'
+                  : camera.status === 'starting'
+                    ? '카메라를 준비하고 있어요.'
+                    : camera.message}
+              </p>
+            )}
+          </div>
+        </section>
         <ReminderSettingsPanel />
       </div>
     </section>
@@ -915,6 +1027,7 @@ function Dashboard({
   // 별도의 페이지 이동 없이 선택한 메뉴에 맞는 화면만 렌더링한다.
   const [view, setView] = useState<View>('today')
   const { statistics, error: statisticsError, refresh: refreshStatistics } = useWaterStatistics()
+  const camera = useCameraDetection(state.status === 'ready')
 
   return (
     <div className="window">
@@ -936,6 +1049,12 @@ function Dashboard({
             </button>
           ))}
         </nav>
+        {camera.status !== 'off' && (
+          <button className="camera-active" onClick={camera.stop}>
+            <span aria-hidden="true" />
+            {camera.status === 'starting' ? '카메라 준비 중 · 취소' : '카메라 사용 중 · 끄기'}
+          </button>
+        )}
       </aside>
       <main>
         {view === 'today' &&
@@ -967,7 +1086,7 @@ function Dashboard({
             refreshStatistics={refreshStatistics}
           />
         )}
-        {view === 'settings' && <Settings state={state} refresh={refresh} />}
+        {view === 'settings' && <Settings state={state} refresh={refresh} camera={camera} />}
       </main>
     </div>
   )

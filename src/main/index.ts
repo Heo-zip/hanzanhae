@@ -1,5 +1,6 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, net, protocol, session } from 'electron'
 import { join } from 'path'
+import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import {
@@ -12,8 +13,23 @@ import { initializeGardenControls } from './gardenControls'
 import { initializeStorageIpc } from './storage/ipc'
 import { initializeReminders } from './reminders/service'
 import { initializeUpdates } from './updates'
+import { cameraAssetName, isDashboardUrl } from './camera/security'
 
 let dashboardWindow: BrowserWindow | null = null
+
+// 패키지의 모델과 WASM만 로컬에서 읽는 전용 프로토콜이다.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'hanzanhae-assets',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true }
+  }
+])
+
+function expectedDashboardUrl(): string {
+  return is.dev && process.env['ELECTRON_RENDERER_URL']
+    ? process.env['ELECTRON_RENDERER_URL']
+    : pathToFileURL(join(__dirname, '../renderer/index.html')).toString()
+}
 
 // 두 번째 실행은 같은 SQLite 파일·메뉴 막대·단축키를 겹쳐 쓰지 않도록 바로 종료하고,
 // 이미 실행 중인 앱이 대시보드를 앞으로 가져온다.
@@ -42,7 +58,9 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // 대시보드가 숨겨져도 사용자가 켠 카메라 감지를 계속 처리한다.
+      backgroundThrottling: false
     }
   })
 
@@ -85,6 +103,16 @@ function showDashboard(): void {
 app.whenReady().then(() => {
   if (!isPrimaryInstance) return
 
+  protocol.handle('hanzanhae-assets', async (request) => {
+    const name = cameraAssetName(request.url, request.method)
+    if (!name) return new Response('Not found', { status: 404 })
+    const file = join(__dirname, '../renderer/assets', name)
+    const response = await net.fetch(pathToFileURL(file).toString())
+    const headers = new Headers(response.headers)
+    headers.set('Access-Control-Allow-Origin', '*')
+    return new Response(response.body, { status: response.status, headers })
+  })
+
   // Windows에서 앱을 식별할 ID를 설정한다.
   electronApp.setAppUserModelId('com.heozip.hanzanhae')
 
@@ -97,6 +125,28 @@ app.whenReady().then(() => {
 
   initializeStorageIpc(() => dashboardWindow, getGardenWindow)
   initializeGardenWindowIpc(() => dashboardWindow)
+  // 카메라는 대시보드의 메인 프레임만 사용할 수 있다. 마이크·화면 캡처는 허용하지 않는다.
+  session.defaultSession.setPermissionCheckHandler((contents, permission, _origin, details) => {
+    if (permission !== 'media') return false
+    return (
+      contents === dashboardWindow?.webContents &&
+      details.isMainFrame &&
+      isDashboardUrl(details.requestingUrl, expectedDashboardUrl()) &&
+      details.mediaType === 'video'
+    )
+  })
+  session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => {
+    const mediaTypes = 'mediaTypes' in details ? details.mediaTypes : undefined
+    callback(
+      permission === 'media' &&
+        contents === dashboardWindow?.webContents &&
+        details.isMainFrame &&
+        isDashboardUrl(details.requestingUrl, expectedDashboardUrl()) &&
+        Array.isArray(mediaTypes) &&
+        mediaTypes.length === 1 &&
+        mediaTypes[0] === 'video'
+    )
+  })
   createWindow()
   showGardenWindow()
   initializeGardenControls(showDashboard, initializeUpdates())

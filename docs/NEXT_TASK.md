@@ -1,6 +1,8 @@
 # 다음 작업
 
-> 현재 작업: [#34](https://github.com/Heo-zip/hanzanhae/issues/34) 횟수 목표와 텀블러 기록 전환을 구현하고 검토 중이다. 기존 ml 기록과 성장 이력은 보존하고 횟수로 환산하지 않는다. 사용자 QA 후 카메라 감지 작업으로 진행한다.
+> 진행: [#36](https://github.com/Heo-zip/hanzanhae/issues/36) 카메라 감지는 고개 각도·손목·용기 잡음을 단계로 보는 방식으로 재설계했고, 사용자가 이전 방식보다 낫다고 확인해 기존 방식을 제거했다(2026-11-16). 후보 수만 표시하며 자동 기록은 연결하지 않았다. 다음은 동작별 놓침·오감지 기록과 확인 후 기록 방식 검토다. [기술 기록](features/camera-drink-detection-TECH.md), [기획](features/camera-drink-detection-PLAN.md)
+
+> 완료: [#34](https://github.com/Heo-zip/hanzanhae/issues/34) 횟수 목표와 텀블러 기록 분리는 [PR #35](https://github.com/Heo-zip/hanzanhae/pull/35)로 develop에 병합했다.
 
 > 이 문서는 현재 진행 상태와 바로 이어갈 일을 관리한다. 전체 순서는 [MVP 개발 순서](roadmap.md)를 따른다.
 

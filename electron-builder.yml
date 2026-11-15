@@ -6,6 +6,10 @@ directories:
 extraResources:
   - from: src/renderer/src/assets/fonts/OFL.txt
     to: licenses/Paperlogy-OFL.txt
+  - from: src/renderer/src/assets/models/APACHE-2.0.txt
+    to: licenses/MediaPipe-APACHE-2.0.txt
+  - from: src/renderer/src/assets/models/README.md
+    to: licenses/MediaPipe-models.md
 files:
   - '!**/.vscode/*'
   - '!src/*'
@@ -37,6 +41,7 @@ mac:
   # https://github.com/electron-userland/electron-builder/pull/9962
   extendInfo:
     CFBundleName: "\u1112\u1161\u11AB\u110C\u1161\u11AB\u1112\u1162"
+    NSCameraUsageDescription: 물 마시는 동작을 감지할 때 카메라를 사용합니다. 영상은 이 Mac에서만 처리됩니다.
 dmg:
   artifactName: ${name}-${version}.${ext}
 linux:
