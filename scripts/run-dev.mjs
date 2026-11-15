@@ -14,7 +14,7 @@ if (process.platform === 'darwin' && !environment.ELECTRON_EXEC_PATH) {
     readFileSync(join(electronDirectory, 'package.json'), 'utf8')
   ).version
   const cache = join(root, 'node_modules', '.cache', 'hanzanhae-dev')
-  const destination = join(cache, `${electronVersion}-${process.arch}-v1`)
+  const destination = join(cache, `${electronVersion}-${process.arch}-v2`)
   const application = join(destination, 'Electron.app')
   const executable = join(application, 'Contents', 'MacOS', 'Electron')
   const run = (command, args) => {
@@ -46,6 +46,8 @@ if (process.platform === 'darwin' && !environment.ELECTRON_EXEC_PATH) {
           'Set :CFBundleName 한잔해 개발',
           '-c',
           'Set :CFBundleDisplayName 한잔해 개발',
+          '-c',
+          'Set :NSCameraUsageDescription 물 마시는 동작을 감지할 때 카메라를 사용합니다. 영상은 이 Mac에서만 처리됩니다.',
           join(copy, 'Contents', 'Info.plist')
         ])
         run('codesign', ['--force', '--deep', '--sign', '-', copy])

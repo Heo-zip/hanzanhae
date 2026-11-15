@@ -223,6 +223,25 @@ button {
   color: var(--text);
   font-weight: 700;
 }
+.camera-active {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: auto 4px 0;
+  padding: 8px 0;
+  border: 0;
+  background: none;
+  color: var(--brand-ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.camera-active span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand);
+}
 main {
   padding: 36px 40px;
   overflow: auto;
@@ -738,7 +757,8 @@ main {
 }
 .chart .tip {
   width: max-content;
-  max-width: 100%;
+  max-width: calc(100% - 12px);
+  text-align: center;
   white-space: normal;
 }
 
@@ -975,6 +995,166 @@ main {
 }
 .group .set {
   padding: 16px 0;
+}
+.camera-settings .set {
+  border: 0;
+}
+.camera-sub {
+  color: var(--text-sub);
+  font-size: 13px;
+}
+.camera-note {
+  margin: 0;
+  padding: 0 0 16px;
+  color: var(--text-sub);
+  font-size: 13px;
+  line-height: 1.6;
+}
+/* 영상 옆에 마시는 동작 3단계를 세로로 둔다. 좁은 창에서는 아래로 내린다. */
+.camera-view {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 200px;
+  gap: 20px;
+  align-items: start;
+  padding-bottom: 20px;
+}
+.camera-preview-frame {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: 14px;
+  background: var(--line);
+  overflow: hidden;
+}
+.camera-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.camera-detection-count {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(18, 38, 28, 0.82);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  animation: camera-count 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.camera-detection-count strong {
+  color: #aef0c2;
+  font-size: 16px;
+}
+@keyframes camera-count {
+  from {
+    transform: scale(1.18);
+    background: var(--brand);
+  }
+}
+.camera-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.camera-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.camera-steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text-sub);
+  font-size: 14px;
+  font-weight: 600;
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+.camera-steps li > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.camera-steps small {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.camera-step-num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--line);
+  font-size: 12px;
+  font-weight: 700;
+}
+.camera-steps li.on {
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+}
+.camera-steps li.on small {
+  color: var(--brand-ink);
+}
+.camera-steps li.on .camera-step-num {
+  background: var(--brand);
+  color: #fff;
+}
+.camera-legend {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: var(--text-sub);
+  font-size: 12px;
+}
+.camera-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.camera-legend li::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+/* 미리보기 캔버스에 그리는 색과 같다. */
+.camera-legend .face::before {
+  border: 2px solid #61d790;
+}
+.camera-legend .cup::before {
+  border: 2px solid #77c7ff;
+}
+.camera-legend .hand::before {
+  border-radius: 50%;
+  background: #b98cff;
+}
+.camera-legend .mouth::before {
+  border-radius: 50%;
+  background: #ff6b6b;
+}
+@media (max-width: 1179px) {
+  .camera-view {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .place-pick {
   display: grid;
