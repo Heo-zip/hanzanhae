@@ -42,6 +42,8 @@ contextBridge.exposeInMainWorld('hanzanhae', {
   updateGardenSettings: (change: GardenSettingsChange) =>
     ipcRenderer.invoke('garden:update-settings', change),
   getStatistics: () => ipcRenderer.invoke('app:get-statistics'),
+  getLoginItem: () => ipcRenderer.invoke('app:get-login-item'),
+  setLoginItem: (openAtLogin: boolean) => ipcRenderer.invoke('app:set-login-item', openAtLogin),
   getReminderSettings: () => ipcRenderer.invoke('reminder:get-settings'),
   updateReminderSettings: (settings: ReminderSettings) =>
     ipcRenderer.invoke('reminder:update-settings', settings),
