@@ -20,6 +20,11 @@ test('다른 출처, 경로, 정원 창의 카메라 요청을 허용하지 않�
   assert.equal(isDashboardUrl('file:///app/out/other.html', dashboard), false)
   assert.equal(isDashboardUrl('https://example.com/app/out/renderer/index.html', dashboard), false)
   assert.equal(isDashboardUrl(undefined, dashboard), false)
+  assert.equal(isDashboardUrl('file://evil/app/out/renderer/index.html', dashboard), false)
+  assert.equal(isDashboardUrl(`${dashboard}#x`, dashboard), false)
+  const dev = 'http://localhost:5173/'
+  assert.equal(isDashboardUrl('http://localhost:5173/', dev), true)
+  assert.equal(isDashboardUrl('http://localhost:5174/', dev), false)
 })
 
 test('모델과 실행 파일만 허용하고 임의 파일이나 다른 요청은 차단한다', () => {

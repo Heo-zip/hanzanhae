@@ -4,8 +4,13 @@ export function isDashboardUrl(url: string | undefined, expectedUrl: string): bo
     if (!url) return false
     const actual = new URL(url)
     const expected = new URL(expectedUrl)
+    // file: 주소는 origin이 모두 'null'이라 프로토콜·호스트·경로를 직접 비교한다.
     return (
-      actual.origin === expected.origin && actual.pathname === expected.pathname && !actual.search
+      actual.protocol === expected.protocol &&
+      actual.host === expected.host &&
+      actual.pathname === expected.pathname &&
+      !actual.search &&
+      !actual.hash
     )
   } catch {
     return false
