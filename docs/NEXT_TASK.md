@@ -1,5 +1,7 @@
 # 다음 작업
 
+> 진행: [#40](https://github.com/Heo-zip/hanzanhae/issues/40) 목표 멈추기 확인을 브라우저 기본 창에서 앱 모달로 바꿨다. 브라우저 화면(가짜 API)으로 열기·목표 바꾸기 이동·멈추기 저장을 확인했다.
+
 > 완료: [#38](https://github.com/Heo-zip/hanzanhae/issues/38) 전체 레이아웃 다듬기. 설정 화면 2열 배치(카메라·알림은 전체 폭), 사이드바 폭 208px, 텀블러 비우기 호버를 테두리만 진하게. 히어로는 시도 후 사용자 요청으로 기존 디자인을 유지했다. 첫 실행 2~4단계가 위로 쏠린 원인(언덕 장식 넘침 + 입력칸 자동 포커스 스크롤)을 `overflow: clip`으로 고쳤다. 사용자 확인 후 병합했다.
 
 > 완료: [#36](https://github.com/Heo-zip/hanzanhae/issues/36) 카메라 물 마시기 감지(고개·손목 단계)는 [PR #37](https://github.com/Heo-zip/hanzanhae/pull/37)로 develop에 병합했다. 감지 횟수는 저장하지 않으며 정확도 측정과 실제 기록 연결이 후속이다.
