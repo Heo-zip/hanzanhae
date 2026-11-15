@@ -971,7 +971,7 @@ function Settings({
             </div>
           </div>
         </section>
-        <section className="sset">
+        <section className="sset wide">
           <div className="sset-head">
             <h2>카메라 감지</h2>
           </div>

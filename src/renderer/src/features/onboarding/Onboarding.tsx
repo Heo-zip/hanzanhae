@@ -111,7 +111,7 @@ function Onboarding({ onComplete }: { onComplete: () => Promise<void> }): React.
           </div>
           <span style={{ width: 52 }} />
         </div>
-        <div className={`ob-body ${step === 0 ? 'ob-body-welcome' : ''}`}>
+        <div className="ob-body">
           <div className="ob-step on" key={step}>
             {step === 0 && (
               <>
