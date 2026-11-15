@@ -39,7 +39,12 @@ export function trusted(event: Electron.IpcMainInvokeEvent | Electron.IpcMainEve
         ? process.env['ELECTRON_RENDERER_URL']
         : pathToFileURL(join(__dirname, '../renderer/index.html')).toString()
     )
-    return current.origin === expected.origin && current.pathname === expected.pathname
+    // file: 주소는 origin이 모두 'null'이라 프로토콜·호스트·경로를 직접 비교한다.
+    return (
+      current.protocol === expected.protocol &&
+      current.host === expected.host &&
+      current.pathname === expected.pathname
+    )
   } catch {
     return false
   }

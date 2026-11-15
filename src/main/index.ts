@@ -124,6 +124,15 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  // 앱 창이 다른 문서로 이동하거나 새 창을 열지 못하게 해 preload API가 외부 문서에 노출되지 않게 한다.
+  // 같은 주소 새로고침(개발 중 화면 갱신)만 허용한다.
+  app.on('web-contents-created', (_, contents) => {
+    contents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    contents.on('will-navigate', (event, url) => {
+      if (url !== contents.getURL()) event.preventDefault()
+    })
+  })
+
   initializeStorageIpc(() => dashboardWindow, getGardenWindow)
   initializeGardenWindowIpc(() => dashboardWindow)
   initializeLoginItemIpc(() => dashboardWindow)

@@ -1,5 +1,6 @@
 import { app, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import type { LoginItemResult } from '../shared/appState'
+import { trusted as fromAppDocument } from './storage/ipc'
 
 // 로그인 항목은 macOS가 직접 관리하므로 DB에 따로 저장하지 않고 매번 시스템에서 읽는다.
 // 개발 실행은 Electron 바이너리가 등록되므로 배포 앱(macOS)에서만 사용한다.
@@ -19,8 +20,9 @@ function current(): LoginItemResult {
 }
 
 export function initializeLoginItemIpc(getDashboard: () => BrowserWindow | null): void {
+  // 다른 IPC와 같은 검사(메인 프레임 + 앱 문서 주소)에 대시보드 창인지까지 확인한다.
   const trusted = (event: IpcMainInvokeEvent): boolean =>
-    event.sender === getDashboard()?.webContents && event.senderFrame === event.sender.mainFrame
+    fromAppDocument(event) && event.sender === getDashboard()?.webContents
 
   ipcMain.handle('app:get-login-item', (event): LoginItemResult => {
     if (!trusted(event)) return { ok: false, code: 'VALIDATION_ERROR' }
