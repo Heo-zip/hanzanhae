@@ -1,6 +1,8 @@
 # 다음 작업
 
-> 진행: [#41](https://github.com/Heo-zip/hanzanhae/issues/41) 로그인 시 자동 실행 설정을 연결했다. 브라우저 화면(가짜 API)으로 켜기·끄기·실패 복구를 확인했고, 패키징 앱의 실제 로그인 실행은 수동 확인이 남았다.
+> 완료: [#41](https://github.com/Heo-zip/hanzanhae/issues/41) 로그인 시 자동 실행 설정을 연결했다. 브라우저 화면(가짜 API)으로 켜기·끄기·실패 복구를 확인했고, 패키징 앱의 실제 로그인 실행은 수동 확인이 남았다. develop에 병합했다.
+
+> 완료: [#40](https://github.com/Heo-zip/hanzanhae/issues/40) 목표 멈추기 확인을 브라우저 기본 창에서 앱 모달로 바꿨다. 브라우저 화면(가짜 API)으로 열기·목표 바꾸기 이동·멈추기 저장을 확인했다. [PR #42](https://github.com/Heo-zip/hanzanhae/pull/42)로 develop에 병합했다.
 
 > 완료: [#38](https://github.com/Heo-zip/hanzanhae/issues/38) 전체 레이아웃 다듬기. 설정 화면 2열 배치(카메라·알림은 전체 폭), 사이드바 폭 208px, 텀블러 비우기 호버를 테두리만 진하게. 히어로는 시도 후 사용자 요청으로 기존 디자인을 유지했다. 첫 실행 2~4단계가 위로 쏠린 원인(언덕 장식 넘침 + 입력칸 자동 포커스 스크롤)을 `overflow: clip`으로 고쳤다. 사용자 확인 후 병합했다.
 
