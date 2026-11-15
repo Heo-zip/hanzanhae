@@ -42,6 +42,9 @@ contextBridge.exposeInMainWorld('hanzanhae', {
   updateGardenSettings: (change: GardenSettingsChange) =>
     ipcRenderer.invoke('garden:update-settings', change),
   getStatistics: () => ipcRenderer.invoke('app:get-statistics'),
+  setCameraActive(active: boolean): void {
+    if (typeof active === 'boolean') ipcRenderer.send('camera:set-active', active)
+  },
   getLoginItem: () => ipcRenderer.invoke('app:get-login-item'),
   setLoginItem: (openAtLogin: boolean) => ipcRenderer.invoke('app:set-login-item', openAtLogin),
   getReminderSettings: () => ipcRenderer.invoke('reminder:get-settings'),

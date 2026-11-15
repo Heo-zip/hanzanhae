@@ -1,5 +1,7 @@
 # 다음 작업
 
+> 진행: [#45](https://github.com/Heo-zip/hanzanhae/issues/45) 패키지 보안·성능 정리. Electron fuses(RunAsNode·NODE_OPTIONS·--inspect 차단, asar 무결성 검사·asar 전용 실행) 적용, 불필요한 macOS 권한 2개 제거, MediaPipe 중복 포함 제거(app.asar 54.8MB → 31.9MB), 카메라를 켠 동안만 대시보드 백그라운드 제한 해제, SQL 문 재사용. 로컬 ad-hoc 패키지 실행은 확인했고 서명 앱의 카메라 동작은 미확인이다.
+
 > 완료: [#41](https://github.com/Heo-zip/hanzanhae/issues/41) 로그인 시 자동 실행 설정을 연결했다. 브라우저 화면(가짜 API)으로 켜기·끄기·실패 복구를 확인했고, 패키징 앱의 실제 로그인 실행은 수동 확인이 남았다. develop에 병합했다.
 
 > 완료: [#40](https://github.com/Heo-zip/hanzanhae/issues/40) 목표 멈추기 확인을 브라우저 기본 창에서 앱 모달로 바꿨다. 브라우저 화면(가짜 API)으로 열기·목표 바꾸기 이동·멈추기 저장을 확인했다. [PR #42](https://github.com/Heo-zip/hanzanhae/pull/42)로 develop에 병합했다.

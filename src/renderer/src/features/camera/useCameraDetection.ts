@@ -164,6 +164,12 @@ export function useCameraDetection(hasGoal: boolean): CameraControl {
     }
   }, [hasGoal, stop])
 
+  // 카메라가 켜진 동안만 창이 숨겨져도 분석이 느려지지 않게 메인 프로세스에 알린다.
+  useEffect(() => {
+    window.hanzanhae.setCameraActive(status === 'on')
+    return () => window.hanzanhae.setCameraActive(false)
+  }, [status])
+
   useEffect(() => {
     return () => {
       generation.current += 1

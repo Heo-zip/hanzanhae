@@ -29,13 +29,13 @@
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",
-    "@mediapipe/tasks-vision": "^0.10.21",
     "electron-updater": "^6.8.11"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.1",
     "@electron-toolkit/eslint-config-ts": "^4.0.0",
     "@electron-toolkit/tsconfig": "^2.0.0",
+    "@mediapipe/tasks-vision": "^0.10.21",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

@@ -19,6 +19,14 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+# 배포 앱을 다른 용도로 실행하지 못하게 한다. 카메라 권한을 가진 앱을 Node로 실행하거나
+# 디버거를 붙이는 방법을 막고, 서명된 app.asar 안의 코드만 불러온다.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
 win:
   executableName: hanzanhae
 nsis:
