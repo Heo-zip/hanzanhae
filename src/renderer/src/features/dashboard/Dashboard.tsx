@@ -11,6 +11,7 @@ import { useRecordCup } from '../water/useRecordCup'
 import { useCancelWater } from '../water/useCancelWater'
 import { isMlInput } from '../water/mlInput'
 import ClearTodayDialog, { type ClearTodaySnapshot } from './ClearTodayDialog'
+import StopGoalDialog from './StopGoalDialog'
 import { useWaterStatistics } from '../statistics/useWaterStatistics'
 import { useCameraDetection, type CameraControl } from '../camera/useCameraDetection'
 import ReminderSettingsPanel from '../reminders/ReminderSettingsPanel'
@@ -647,6 +648,7 @@ function Settings({
   camera: CameraControl
 }): React.JSX.Element {
   const [editing, setEditing] = useState(false)
+  const [stopping, setStopping] = useState(false)
   const [goal, setGoal] = useState('')
   const [snapshot, setSnapshot] = useState({
     goalId: state.status === 'ready' ? state.goalId : null,
@@ -765,11 +767,19 @@ function Settings({
     if (await save({ requestId: crypto.randomUUID(), kind: 'cup', cupMl: Number(cup) }))
       setMessage('텀블러 용량을 저장했어요.')
   }
+  function startEditing(): void {
+    setGoal('')
+    setSnapshot({ goalId, todayMl: state.todayMl, day: state.day })
+    setError('')
+    setMessage('')
+    setEditing(true)
+  }
   async function stopGoal(): Promise<void> {
-    if (goalId === null || !window.confirm('현재 목표를 멈출까요? 기존 기록과 화분은 유지돼요.'))
-      return
+    if (goalId === null) return
     if (await save({ requestId: crypto.randomUUID(), kind: 'stop', expectedGoalId: goalId }))
       setMessage('목표를 멈췄어요. 새 목표를 설정할 수 있어요.')
+    // 실패해도 모달을 닫고 설정 화면의 오류 안내를 보여준다.
+    setStopping(false)
   }
   return (
     <section className="view on" aria-label="설정">
@@ -804,24 +814,18 @@ function Settings({
                 )}
               </div>
               <div className="goal-actions">
-                <button
-                  className="btn line"
-                  disabled={busy}
-                  onClick={() => {
-                    setGoal('')
-                    setSnapshot({ goalId, todayMl: state.todayMl, day: state.day })
-                    setError('')
-                    setMessage('')
-                    setEditing(true)
-                  }}
-                >
+                <button className="btn line" disabled={busy} onClick={startEditing}>
                   {state.status === 'ready' ? '목표 바꾸기' : '새 목표 설정'}
                 </button>
                 {state.status === 'ready' && (
                   <button
                     className="btn ghost danger"
                     disabled={busy}
-                    onClick={() => void stopGoal()}
+                    onClick={() => {
+                      setError('')
+                      setMessage('')
+                      setStopping(true)
+                    }}
                   >
                     멈추기
                   </button>
@@ -865,6 +869,17 @@ function Settings({
             )}
           </div>
         </section>
+        {stopping && state.status === 'ready' && (
+          <StopGoalDialog
+            goalCount={state.goalCount}
+            todayCount={state.todayCount}
+            plantStage={state.plantStage}
+            busy={busy}
+            onDismiss={() => setStopping(false)}
+            onConfirm={stopGoal}
+            onChangeGoal={startEditing}
+          />
+        )}
         <section className="sset">
           <div className="sset-head">
             <h2>텀블러 용량</h2>
