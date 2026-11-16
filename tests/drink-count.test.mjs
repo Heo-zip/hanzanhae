@@ -39,7 +39,7 @@ function withDatabase(run) {
   }
 }
 
-test('물 마신 횟수와 텀블러 용량은 서로 영향을 주지 않으며 각각 취소된다', () => {
+test('물 마신 횟수와 텀블러 용량은 각각 성장에 더해지고 각각 취소된다', () => {
   withDatabase((db) => {
     const state = db.completeSetup({ requestId: 'setup', goalCount: 8, cupMl: 500 })
     assert.equal(state.goalCount, 8)
@@ -47,12 +47,12 @@ test('물 마신 횟수와 텀블러 용량은 서로 영향을 주지 않으며
     const action = db.recordDrinkAction({ ...base, kind: 'add', requestId: 'drink' })
     assert.equal(action.state.todayCount, 1)
     assert.equal(action.state.todayMl, 0)
-    assert.equal(action.state.growthPoints, 0)
+    assert.equal(action.state.growthPoints, 250)
     assert.equal(db.recordDrinkAction({ ...base, kind: 'add', requestId: 'drink' }).created, false)
     const water = db.recordCup({ ...base, requestId: 'bottle' }).state
     assert.equal(water.todayCount, 1)
     assert.equal(water.todayMl, 500)
-    assert.equal(water.growthPoints, 500)
+    assert.equal(water.growthPoints, 750)
     const undone = db.recordDrinkAction({
       ...base,
       kind: 'undo',
@@ -263,5 +263,19 @@ test('텀블러 기록 없이 마신 횟수만 있어도 전체 취소할 수 �
         expectedLatestDrinkId: null
       })
     )
+  })
+})
+
+test('버튼 횟수는 5분 안에 다시 눌러도 성장을 한 번만 더하고 카메라 감지는 매번 더한다', () => {
+  withDatabase((db, _path, setNow) => {
+    const state = db.completeSetup({ requestId: 'setup', goalCount: 8, cupMl: 500 })
+    const base = { expectedGoalId: state.goalId, day: state.day, kind: 'add' }
+    assert.equal(db.recordDrinkAction({ ...base, requestId: 'b1' }).state.growthPoints, 250)
+    assert.equal(db.recordDrinkAction({ ...base, requestId: 'b2' }).state.growthPoints, 250)
+    const camera = { ...base, source: 'camera' }
+    assert.equal(db.recordDrinkAction({ ...camera, requestId: 'c1' }).state.growthPoints, 500)
+    assert.equal(db.recordDrinkAction({ ...camera, requestId: 'c2' }).state.growthPoints, 750)
+    setNow('2026-11-15T03:06:00Z')
+    assert.equal(db.recordDrinkAction({ ...base, requestId: 'b3' }).state.growthPoints, 1000)
   })
 })

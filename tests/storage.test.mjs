@@ -1528,7 +1528,7 @@ test('최초 설정부터 달성·취소·통계·알림 기준과 재실행 복
     now = new Date('2026-11-14T04:00:00.000Z')
     state = db.recordCup({ requestId: 'flow-second', expectedGoalId: goalId, day: state.day }).state
     assert.equal(state.todayMl, 500)
-    assert.equal(state.growthPoints, 500)
+    assert.equal(state.growthPoints, 750)
     state = db.recordDrinkAction({
       requestId: 'count-second',
       kind: 'add',
@@ -1546,7 +1546,7 @@ test('최초 설정부터 달성·취소·통계·알림 기준과 재실행 복
       recordId: state.todayRecords[0].id
     }).state
     assert.equal(state.todayMl, 250)
-    assert.equal(state.growthPoints, 250)
+    assert.equal(state.growthPoints, 750)
     assert.equal(db.readStatistics().days.at(-1).achieved, true)
     state = db.recordDrinkAction({
       requestId: 'count-undo',
@@ -1560,7 +1560,7 @@ test('최초 설정부터 달성·취소·통계·알림 기준과 재실행 복
 
     now = new Date('2026-11-14T04:15:00.000Z')
     state = db.recordCup({ requestId: 'flow-again', expectedGoalId: goalId, day: state.day }).state
-    assert.equal(state.growthPoints, 500)
+    assert.equal(state.growthPoints, 750)
     state = db.recordDrinkAction({
       requestId: 'count-again',
       kind: 'add',
@@ -1685,8 +1685,12 @@ test('기록 내보내기는 취소하지 않은 기록만 한국 시각으로 �
     const base = { expectedGoalId: state.goalId, day: state.day }
     state = db.recordDrinkAction({ ...base, kind: 'add', requestId: 'button' }).state
     now = new Date('2026-11-11T00:10:00Z')
-    state = db.recordDrinkAction({ ...base, kind: 'add', requestId: 'camera', source: 'camera' })
-      .state
+    state = db.recordDrinkAction({
+      ...base,
+      kind: 'add',
+      requestId: 'camera',
+      source: 'camera'
+    }).state
     state = db.recordCup({ ...base, requestId: 'cup' }).state
     state = db.recordCup({ ...base, requestId: 'cancelled' }).state
     state = db.cancelWater({
