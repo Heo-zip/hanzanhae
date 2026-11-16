@@ -1,6 +1,8 @@
 # 현재 작업 상태
 
-> 진행: [#45](https://github.com/Heo-zip/hanzanhae/issues/45) 패키지 보안·성능 정리. Electron fuses(RunAsNode·NODE_OPTIONS·--inspect 차단, asar 무결성 검사·asar 전용 실행) 적용, 불필요한 macOS 권한 2개 제거, MediaPipe 중복 포함 제거(app.asar 54.8MB → 31.9MB), 카메라를 켠 동안만 대시보드 백그라운드 제한 해제, SQL 문 재사용. 로컬 ad-hoc 패키지 실행은 확인했고 서명 앱의 카메라 동작은 미확인이다.
+> 진행: [#47](https://github.com/Heo-zip/hanzanhae/issues/47) 카메라 감지를 오늘 마신 횟수에 자동 기록하고 사이드바에서 되돌리기를 제공한다. 가짜 API 화면으로 기록·되돌리기·실패 안내를 확인했고 실제 카메라 확인이 남았다.
+
+> 완료: [#45](https://github.com/Heo-zip/hanzanhae/issues/45) 패키지 보안·성능 정리. Electron fuses(RunAsNode·NODE_OPTIONS·--inspect 차단, asar 무결성 검사·asar 전용 실행) 적용, 불필요한 macOS 권한 2개 제거, MediaPipe 중복 포함 제거(app.asar 54.8MB → 31.9MB), 카메라를 켠 동안만 대시보드 백그라운드 제한 해제, SQL 문 재사용. 로컬 ad-hoc 패키지 실행은 확인했고 서명 앱의 카메라 동작은 미확인이다.
 
 > 완료: [#41](https://github.com/Heo-zip/hanzanhae/issues/41) 로그인 시 자동 실행 설정을 연결했다. 브라우저 화면(가짜 API)으로 켜기·끄기·실패 복구를 확인했고, 패키징 앱의 실제 로그인 실행은 수동 확인이 남았다. develop에 병합했다.
 
@@ -36,7 +38,7 @@
 
 - 생기와 성장에 사용한 수치는 사용하며 조정할 임시값이다.
 - Dock 자동 숨김·확대에 맞춘 실시간 위치 추적. [향후 실험](features.md#정원과-창)으로 남아 있다.
-- 카메라 물 마시기 감지는 횟수만 보여주며 사용자 기록에는 연결하지 않았다. 완전히 종료된 앱의 알림도 지원하지 않는다.
+- 완전히 종료된 앱의 알림은 지원하지 않는다. 카메라 감지는 오늘 마신 횟수에 자동 기록하지만(#47) 오감지·놓침 측정은 남았다.
 
 ## 검증과 제한
 

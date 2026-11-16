@@ -14,11 +14,13 @@ import {
   ContainerHold,
   FaceCover,
   SipDetector,
+  handZoomRegions,
   headPitchUp,
   isHandAtMouth,
   poseHead,
   type Box,
   type HeadSource,
+  type HoldSource,
   type Point,
   type SipPhase
 } from './drinkDetection'
@@ -40,12 +42,14 @@ type DetectionStatus = {
   headSource: HeadSource
   handAtMouth: boolean | null
   held: boolean
+  holdSource: HoldSource | null
   sipPhase: SipPhase
 }
 
 type Resources = {
   stream?: MediaStream
   objects?: ObjectDetector
+  zoomObjects?: ObjectDetector
   faceMesh?: FaceLandmarker
   pose?: PoseLandmarker
   timer?: number
@@ -57,9 +61,10 @@ function drawPreview(
   canvas: HTMLCanvasElement,
   video: HTMLVideoElement,
   face: Box | null,
-  objects: Detection[],
+  objects: (Detection & { zoomed?: boolean })[],
   handPoints: Point[],
-  mouth: Point | null
+  mouth: Point | null,
+  zoomRegions: Box[]
 ): void {
   const width = video.videoWidth
   const height = video.videoHeight
@@ -87,6 +92,19 @@ function drawPreview(
       face.height * height
     )
   }
+  // 손 주변 확대 영역(점선)
+  context.save()
+  context.setLineDash([6, 6])
+  context.lineWidth = 2
+  context.strokeStyle = '#b98cff'
+  for (const region of zoomRegions)
+    context.strokeRect(
+      (1 - region.x - region.width) * width,
+      region.y * height,
+      region.width * width,
+      region.height * height
+    )
+  context.restore()
   for (const object of objects) {
     const box = object.boundingBox
     if (!box) continue
@@ -94,7 +112,8 @@ function drawPreview(
     context.strokeStyle = '#77c7ff'
     context.strokeRect(x, box.originY, box.width, box.height)
     const category = object.categories[0]
-    const label = category?.categoryName === 'bottle' ? '물병' : '컵'
+    const label =
+      (category?.categoryName === 'bottle' ? '물병' : '컵') + (object.zoomed ? '(확대)' : '')
     const score = Math.round((category?.score ?? 0) * 100)
     context.fillStyle = '#0d2935'
     context.fillRect(x, Math.max(0, box.originY - 25), 105, 25)
@@ -114,6 +133,9 @@ function drawPreview(
   }
 }
 
+// 손 주변 확대 이미지 크기. EfficientDet-Lite0 입력 크기와 같다.
+const ZOOM_INPUT = 320
+
 function localAsset(asset: string): string {
   const url = new URL(asset, window.location.href)
   if (url.protocol !== 'file:') return url.href
@@ -125,11 +147,12 @@ function release(resources: Resources): void {
   resources.stream?.getTracks().forEach((track) => track.stop())
   if (resources.video) resources.video.srcObject = null
   resources.objects?.close()
+  resources.zoomObjects?.close()
   resources.faceMesh?.close()
   resources.pose?.close()
 }
 
-export function useCameraDetection(hasGoal: boolean): CameraControl {
+export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraControl {
   const [status, setStatus] = useState<CameraStatus>('off')
   const [message, setMessage] = useState('')
   const [sipCount, setSipCount] = useState(0)
@@ -139,6 +162,11 @@ export function useCameraDetection(hasGoal: boolean): CameraControl {
   const starting = useRef(false)
   const active = useRef(false)
   const preview = useRef<HTMLCanvasElement | null>(null)
+  // 감지 타이머는 시작할 때 한 번 만들어지므로 최신 콜백을 ref로 읽는다.
+  const sipHandler = useRef(onSip)
+  useEffect(() => {
+    sipHandler.current = onSip
+  }, [onSip])
   const setPreview = useCallback((canvas: HTMLCanvasElement | null): void => {
     preview.current = canvas
   }, [])
@@ -202,6 +230,15 @@ export function useCameraDetection(hasGoal: boolean): CameraControl {
         maxResults: 5
       })
       if (isCancelled()) return
+      // 손 주변을 잘라 크게 키운 이미지를 한 장씩 보는 검출기다. 영상 모드 검출기와 시간 기록이 섞이지 않게 따로 둔다.
+      local.zoomObjects = await ObjectDetector.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: localAsset(objectModel), delegate: 'CPU' },
+        runningMode: 'IMAGE',
+        scoreThreshold: 0.2,
+        categoryAllowlist: ['cup', 'bottle', 'wine glass'],
+        maxResults: 3
+      })
+      if (isCancelled()) return
       local.faceMesh = await FaceLandmarker.createFromOptions(fileset, {
         baseOptions: { modelAssetPath: localAsset(faceMeshModel), delegate: 'CPU' },
         runningMode: 'VIDEO',
@@ -231,6 +268,11 @@ export function useCameraDetection(hasGoal: boolean): CameraControl {
       if (isCancelled()) return
       const video = local.video
       const objects = local.objects
+      const zoomObjects = local.zoomObjects
+      const zoomCanvas = document.createElement('canvas')
+      zoomCanvas.width = ZOOM_INPUT
+      zoomCanvas.height = ZOOM_INPUT
+      const zoomContext = zoomCanvas.getContext('2d')
       const faceMesh = local.faceMesh
       const pose = local.pose
       const sipDetector = new SipDetector()
@@ -300,8 +342,46 @@ export function useCameraDetection(hasGoal: boolean): CameraControl {
             .slice(15, 23)
             .filter((point) => (point.visibility ?? 0) >= 0.5)
 
-          const held = containerHold.observe(handPoints, boxes, now)
-          const covered = faceCover.observe(faceBox, handPoints, boxes, now) && held
+          // 손 주변을 잘라 320×320으로 키워 다시 찾는다. 손이 가슴 위로 올라왔을 때만 돈다.
+          const zoomRegions = zoomContext ? handZoomRegions(poseMarks, aspect) : []
+          const zoomed: (Detection & { zoomed: boolean })[] = []
+          const zoomBoxes: Box[] = []
+          for (const region of zoomRegions) {
+            const sx = region.x * video.videoWidth
+            const sy = region.y * video.videoHeight
+            const sw = region.width * video.videoWidth
+            const sh = region.height * video.videoHeight
+            zoomContext!.drawImage(video, sx, sy, sw, sh, 0, 0, ZOOM_INPUT, ZOOM_INPUT)
+            for (const item of zoomObjects.detect(zoomCanvas).detections) {
+              const box = item.boundingBox
+              if (!box) continue
+              const originX = sx + (box.originX / ZOOM_INPUT) * sw
+              const originY = sy + (box.originY / ZOOM_INPUT) * sh
+              const boxWidth = (box.width / ZOOM_INPUT) * sw
+              const boxHeight = (box.height / ZOOM_INPUT) * sh
+              zoomed.push({
+                ...item,
+                zoomed: true,
+                boundingBox: { ...box, originX, originY, width: boxWidth, height: boxHeight }
+              })
+              zoomBoxes.push({
+                x: originX / video.videoWidth,
+                y: originY / video.videoHeight,
+                width: boxWidth / video.videoWidth,
+                height: boxHeight / video.videoHeight
+              })
+            }
+          }
+
+          const held = containerHold.observe(
+            handPoints,
+            boxes,
+            now,
+            meshMouth ?? head?.mouth ?? null,
+            zoomBoxes
+          )
+          const covered =
+            faceCover.observe(faceBox, handPoints, [...boxes, ...zoomBoxes], now) && held
           // 얼굴이 보이면 얼굴 모델의 입을, 놓치면 자세 모델의 입과 어깨 너비를 쓴다.
           const handAtMouth = covered
             ? true
@@ -320,6 +400,7 @@ export function useCameraDetection(hasGoal: boolean): CameraControl {
               headSource: sip.source,
               handAtMouth,
               held,
+              holdSource: containerHold.source,
               sipPhase: sip.phase
             }
             setDetectionStatus((previous) =>
@@ -334,13 +415,17 @@ export function useCameraDetection(hasGoal: boolean): CameraControl {
               preview.current,
               video,
               faceBox,
-              containers,
+              [...containers, ...zoomed],
               handPoints,
-              meshMouth ?? head?.mouth ?? null
+              meshMouth ?? head?.mouth ?? null,
+              zoomRegions
             )
           }
-          // 정확도 검증 전이라 화면에 횟수만 보여주고 물 기록에는 저장하지 않는다.
-          if (sip.fired) setSipCount((count) => count + 1)
+          // 감지 결과만 넘기고, 저장·실패 안내는 기록 쪽에서 맡는다. 영상 정보는 넘기지 않는다.
+          if (sip.fired) {
+            setSipCount((count) => count + 1)
+            sipHandler.current()
+          }
         } catch {
           stop()
           setMessage('카메라를 분석하지 못했어요. 다시 켜 주세요.')

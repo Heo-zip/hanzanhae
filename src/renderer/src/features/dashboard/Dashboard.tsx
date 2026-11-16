@@ -15,6 +15,7 @@ import ClearTodayDialog, { type ClearTodaySnapshot } from './ClearTodayDialog'
 import StopGoalDialog from './StopGoalDialog'
 import { useWaterStatistics } from '../statistics/useWaterStatistics'
 import { useCameraDetection, type CameraControl } from '../camera/useCameraDetection'
+import { useCameraRecord } from '../camera/useCameraRecord'
 import ReminderSettingsPanel from '../reminders/ReminderSettingsPanel'
 import { WeekChart, WeekCups } from '../statistics/WaterStatistics'
 import { dayLabel } from '../statistics/dateLabels'
@@ -594,6 +595,16 @@ function CameraView({
     mouth: status?.handAtMouth === true || status?.sipPhase !== 'idle',
     sip: status?.sipPhase === 'sipping'
   }
+  const holdHint =
+    status?.holdSource === 'touch'
+      ? '손에 든 걸 찾았어요'
+      : status?.holdSource === 'zoom'
+        ? '손 주변을 확대해 찾았어요'
+        : status?.holdSource === 'pickup'
+          ? '집어 드는 걸 봤어요'
+          : status?.holdSource === 'mouth'
+            ? '입에 댄 걸 찾았어요'
+            : '손을 가슴 위로 들면 주변을 확대해 찾아요'
   const headHint =
     status?.headSource === 'face'
       ? `고개 ${(status.lift ?? 0) > 0 ? '+' : ''}${status.lift}°`
@@ -623,6 +634,7 @@ function CameraView({
               </span>
               <span>
                 {step.label}
+                {step.key === 'held' && <small>{holdHint}</small>}
                 {step.key === 'sip' && <small>{headHint}</small>}
               </span>
             </li>
@@ -631,7 +643,7 @@ function CameraView({
         <ul className="camera-legend" aria-label="화면 표시">
           <li className="face">얼굴</li>
           <li className="cup">컵·병</li>
-          <li className="hand">손</li>
+          <li className="hand">손·확대 영역</li>
           <li className="mouth">입</li>
         </ul>
       </div>
@@ -1040,7 +1052,9 @@ function Settings({
             <div className="set">
               <div>
                 <b>마시는 동작 알아보기</b>
-                <span className="camera-sub">영상은 이 Mac에서만 보고 저장하지 않아요</span>
+                <span className="camera-sub">
+                  마시면 오늘 횟수에 1회 기록해요. 영상은 이 Mac에서만 보고 저장하지 않아요
+                </span>
               </div>
               <button
                 className="switch"
@@ -1088,7 +1102,9 @@ function Dashboard({
   // 별도의 페이지 이동 없이 선택한 메뉴에 맞는 화면만 렌더링한다.
   const [view, setView] = useState<View>('today')
   const { statistics, error: statisticsError, refresh: refreshStatistics } = useWaterStatistics()
-  const camera = useCameraDetection(state.status === 'ready')
+  const cameraRecord = useCameraRecord(state, refresh)
+  const camera = useCameraDetection(state.status === 'ready', cameraRecord.record)
+  const cameraNotice = cameraRecord.notice
 
   return (
     <div className="window">
@@ -1117,6 +1133,43 @@ function Dashboard({
           </button>
         )}
       </aside>
+      {cameraNotice && (
+        // 키(key)를 바꿔 새 알림마다 등장 효과와 남은 시간 막대를 다시 시작한다.
+        <div
+          key={cameraNotice.kind === 'recorded' ? cameraNotice.recordId : cameraNotice.kind}
+          className={`camera-toast ${cameraNotice.kind}`}
+          role={cameraNotice.kind === 'error' ? 'alert' : 'status'}
+        >
+          <img className="camera-toast-icon" src={drop} alt="" />
+          <div className="camera-toast-text">
+            <b>
+              {cameraNotice.kind === 'recorded'
+                ? '물 마신 걸 기록했어요'
+                : cameraNotice.kind === 'undone'
+                  ? '카메라 기록을 되돌렸어요'
+                  : '기록하지 못했어요'}
+            </b>
+            <span>
+              {cameraNotice.kind === 'error'
+                ? cameraNotice.message
+                : state.status === 'ready'
+                  ? `오늘 ${state.todayCount}회 · 목표 ${state.goalCount}회`
+                  : ''}
+            </span>
+          </div>
+          {cameraNotice.kind === 'recorded' && (
+            <button
+              type="button"
+              className="camera-toast-undo"
+              disabled={cameraRecord.busy}
+              onClick={() => void cameraRecord.undo()}
+            >
+              되돌리기
+            </button>
+          )}
+          <i className="camera-toast-timer" aria-hidden="true" />
+        </div>
+      )}
       <main>
         {view === 'today' &&
           (state.status === 'ready' ? (

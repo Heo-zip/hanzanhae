@@ -10,16 +10,24 @@ function distanceToBox(point: Point, box: Box): number {
 // ── 고개·손목 단계 판정 ──
 // 마시는 순간 병과 손이 가려져도 고개를 젖히는 움직임은 보인다는 가정을 시험한다.
 // 아래 값은 모두 실측 전 임시값이며 후보 수만 보여주고 기록하지 않는다.
-const SIP_LIFT_DEGREES = 12
+// 빠르게 마실 때도 잡히도록 12°·600ms에서 낮췄다(2026-11-16 사용자 확인).
+const SIP_LIFT_DEGREES = 8
 // 자세 모델의 (귀 높이 − 코 높이) ÷ 어깨 너비가 평소보다 이만큼 커지면 젖힌 것으로 본다.
 const POSE_LIFT = 0.06
 const FACE_MEMORY_MS = 3000
-const SIP_HOLD_MS = 600
+const SIP_HOLD_MS = 300
 const SIP_AWAY_MS = 400
 const SIP_LOST_MS = 1500
 const SIP_MAX_MS = 20000
 const SIP_COOLDOWN_MS = 5000
 const HOLD_MEMORY_MS = 6000
+// 빠르게 들어 마시면 드는 순간 용기를 놓치므로, 내린 뒤 이 시간 안에 용기가 보여도 인정한다.
+const CONTAINER_GRACE_MS = 1500
+// 집는 손에 가려 상자가 사라져도 이 시간 동안은 그 자리를 용기로 본다.
+const BOX_MEMORY_MS = 1500
+// 손 주변 확대 영역의 한 변(어깨 너비의 배수)과, 어깨 아래 얼마까지를 '든 손'으로 볼지(어깨 너비의 배수).
+const ZOOM_SIZE = 1.2
+const RAISED_BELOW_SHOULDER = 1
 
 /** Face Landmarker 변환 행렬(4×4, 열 우선)에서 얼굴 정면 방향의 위아래 각도(도)를 구한다. */
 export function headPitchUp(matrix: ArrayLike<number>): number | null {
@@ -42,15 +50,98 @@ export function isHandAtMouth(
   return nearest / faceHeight <= 1
 }
 
-/** 손 끝·손목이 용기 상자에 닿아 있으면 잡은 것으로 보고, 가려진 뒤에도 잠시 기억한다. */
+/** 들었다고 본 근거. 화면 전체에서 닿음 / 손 주변 확대에서 찾음 / 가려지기 직전 상자 / 입에 닿음 */
+export type HoldSource = 'touch' | 'zoom' | 'pickup' | 'mouth'
+
+/**
+ * 손이 용기를 잡았는지 본다. 잡은 뒤 가려져도 잠시 기억한다.
+ * - touch: 화면 전체 검출 상자에 손 점이 닿음
+ * - zoom: 손 주변을 확대해 다시 찾은 상자에 손 점이 닿음
+ * - pickup: 방금 전까지 보이던 상자 자리에 손이 옴(집는 손에 가려 상자가 사라진 경우)
+ * - mouth: 용기 상자가 입에 닿음
+ */
 export class ContainerHold {
   private heldAt = -Infinity
+  private lastSource: HoldSource | null = null
+  private seen: { box: Box; at: number }[] = []
 
-  observe(handPoints: Point[], boxes: Box[], now: number): boolean {
-    if (handPoints.some((point) => boxes.some((box) => distanceToBox(point, box) <= 0.05)))
-      this.heldAt = now
-    return now - this.heldAt <= HOLD_MEMORY_MS
+  get source(): HoldSource | null {
+    return this.lastSource
   }
+
+  observe(
+    handPoints: Point[],
+    boxes: Box[],
+    now: number,
+    mouth: Point | null = null,
+    zoomBoxes: Box[] = []
+  ): boolean {
+    const touches = (list: Box[]): boolean =>
+      handPoints.some((point) => list.some((box) => distanceToBox(point, box) <= 0.05))
+    const recent = this.seen
+      .filter((item) => now - item.at <= BOX_MEMORY_MS)
+      .map((item) => item.box)
+    const found: HoldSource | null = touches(boxes)
+      ? 'touch'
+      : touches(zoomBoxes)
+        ? 'zoom'
+        : mouth !== null &&
+            [...boxes, ...zoomBoxes].some((box) => distanceToBox(mouth, box) <= 0.05)
+          ? 'mouth'
+          : touches(recent)
+            ? 'pickup'
+            : null
+    this.seen = [
+      ...this.seen.filter((item) => now - item.at <= BOX_MEMORY_MS),
+      ...[...boxes, ...zoomBoxes].map((box) => ({ box, at: now }))
+    ].slice(-20)
+    if (found) {
+      this.heldAt = now
+      this.lastSource = found
+    }
+    const held = now - this.heldAt <= HOLD_MEMORY_MS
+    if (!held) this.lastSource = null
+    return held
+  }
+}
+
+/**
+ * 가슴 높이 이상으로 올라온 손마다 주변을 정사각형(화면 비율 반영)으로 잡는다.
+ * 작고 가려진 용기를 크게 보고 다시 찾기 위한 영역이며, 어깨가 둘 다 보여야 만든다.
+ */
+export function handZoomRegions(marks: PoseMark[], frameAspect: number): Box[] {
+  const seen = (index: number): PoseMark | null => {
+    const mark = marks[index]
+    return mark && (mark.visibility ?? 0) >= 0.5 ? mark : null
+  }
+  const left = seen(11)
+  const right = seen(12)
+  if (!left || !right) return []
+  const scale = Math.hypot((left.x - right.x) * frameAspect, left.y - right.y)
+  if (scale <= 0) return []
+  const shoulderY = (left.y + right.y) / 2
+  // 높이 기준 한 변. 너비는 화면 비율만큼 줄여 실제 정사각형이 되게 한다.
+  const height = Math.min(1, scale * ZOOM_SIZE)
+  const width = Math.min(1, height / frameAspect)
+  const regions: Box[] = []
+  // 왼손 15·17·19·21, 오른손 16·18·20·22
+  for (const indexes of [
+    [15, 17, 19, 21],
+    [16, 18, 20, 22]
+  ]) {
+    const points = indexes.map(seen).filter((mark): mark is PoseMark => mark !== null)
+    if (!points.length) continue
+    const x = points.reduce((sum, point) => sum + point.x, 0) / points.length
+    const y = points.reduce((sum, point) => sum + point.y, 0) / points.length
+    if (y > shoulderY + scale * RAISED_BELOW_SHOULDER) continue
+    regions.push({
+      x: Math.min(Math.max(0, x - width / 2), 1 - width),
+      y: Math.min(Math.max(0, y - height / 2), 1 - height),
+      width,
+      height
+    })
+  }
+  return regions
 }
 
 export type PoseMark = Point & { visibility?: number }
@@ -130,7 +221,8 @@ export type SipResult = {
 }
 
 /**
- * 용기를 든 손이 입으로 옴 → 평소보다 고개를 젖힌 채 유지 → 손을 내림을 한 번의 후보로 센다.
+ * 손이 입으로 옴 → 평소보다 고개를 젖힌 채 유지 → 손을 내림을 한 번의 후보로 센다.
+ * 용기는 그 과정 중 한 번이라도(또는 내린 직후 잠시 안에) 보이면 된다.
  * 평소 각도는 손이 입 근처가 아닐 때의 중앙값이라 카메라 높이에 따라 달라지지 않는다.
  */
 export class SipDetector {
@@ -142,6 +234,8 @@ export class SipDetector {
   private lastFired = -Infinity
   private neutral: number[] = []
   private poseNeutral: number[] = []
+  private sawContainer = false
+  private graceUntil = -Infinity
 
   observe(frame: SipFrame, now: number): SipResult {
     const { pitch, handAtMouth, containerHeld } = frame
@@ -169,16 +263,31 @@ export class SipDetector {
     let fired = false
     const result = (): SipResult => ({ fired, phase: this.phase, lift, poseLift, source })
 
+    const fire = (): boolean => {
+      if (now - this.lastFired < SIP_COOLDOWN_MS) return false
+      this.lastFired = now
+      return true
+    }
+
     if (this.phase === 'idle') {
-      if (handAtMouth === true && containerHeld && (baseline !== null || poseBaseline !== null)) {
+      // 마신 동작은 끝났지만 용기를 못 봤던 경우, 내린 직후 용기가 보이면 센다.
+      if (now <= this.graceUntil && containerHeld) {
+        this.graceUntil = -Infinity
+        fired = fire()
+        return result()
+      }
+      if (handAtMouth === true && (baseline !== null || poseBaseline !== null)) {
         this.phase = 'approach'
         this.startedAt = now
         this.lastAtMouth = now
         this.awaySince = null
         this.tiltSince = null
+        this.sawContainer = containerHeld
+        this.graceUntil = -Infinity
       }
       return result()
     }
+    if (containerHeld) this.sawContainer = true
 
     if (tilted === true) {
       this.tiltSince ??= now
@@ -191,8 +300,10 @@ export class SipDetector {
     } else if (handAtMouth === false) {
       this.awaySince ??= now
       if (now - this.awaySince >= SIP_AWAY_MS) {
-        fired = this.phase === 'sipping' && now - this.lastFired >= SIP_COOLDOWN_MS
-        if (fired) this.lastFired = now
+        if (this.phase === 'sipping') {
+          if (this.sawContainer) fired = fire()
+          else this.graceUntil = now + CONTAINER_GRACE_MS
+        }
         this.phase = 'idle'
       }
     } else if (now - this.lastAtMouth > SIP_LOST_MS) this.phase = 'idle'

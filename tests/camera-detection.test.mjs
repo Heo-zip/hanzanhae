@@ -13,8 +13,15 @@ const source = ts.transpileModule(readFileSync(path, 'utf8'), {
 }).outputText
 const module = new Module(path)
 module._compile(source, path)
-const { SipDetector, headPitchUp, isHandAtMouth, ContainerHold, poseHead, FaceCover } =
-  module.exports
+const {
+  SipDetector,
+  headPitchUp,
+  isHandAtMouth,
+  ContainerHold,
+  poseHead,
+  FaceCover,
+  handZoomRegions
+} = module.exports
 
 /** 평소 자세를 5프레임 보여 기준 각도를 만든다. */
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- 테스트 보조 함수는 JavaScript다.
@@ -108,6 +115,46 @@ test('변환 행렬에서 고개 각도와 손·입 거리를 계산한다', () 
   assert.equal(isHandAtMouth(mouth, 0.3, [], 4 / 3), null)
 })
 
+test('빠르게 들어 마셔 드는 순간 용기를 놓쳐도, 마시는 중에 보이면 센다', () => {
+  const detector = new SipDetector()
+  let t = calm(detector)
+  detector.observe({ pitch: 2, handAtMouth: true, containerHeld: false }, t)
+  for (let i = 0; i < 3; i += 1)
+    detector.observe({ pitch: 10, handAtMouth: true, containerHeld: i > 0 }, (t += 250))
+  let fired = 0
+  for (let i = 0; i < 3; i += 1)
+    if (detector.observe({ pitch: 0, handAtMouth: false, containerHeld: true }, (t += 250)).fired)
+      fired += 1
+  assert.equal(fired, 1)
+})
+
+test('마시는 동안 용기를 못 봤으면 내린 직후 1.5초 안에 보일 때만 센다', () => {
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- 테스트 보조 함수다.
+  const run = (seenAfter) => {
+    const detector = new SipDetector()
+    const { count, end } = sip(detector, calm(detector), { lift: 10, hold: 500, held: false })
+    const later = detector.observe(
+      { pitch: 0, handAtMouth: false, containerHeld: true },
+      end + seenAfter
+    )
+    return count + (later.fired ? 1 : 0)
+  }
+  assert.equal(run(500), 1)
+  assert.equal(run(2500), 0)
+})
+
+test('8도만 젖혀도 마신 것으로 본다', () => {
+  const detector = new SipDetector()
+  assert.equal(sip(detector, calm(detector), { lift: 8, hold: 500 }).count, 1)
+})
+
+test('용기가 입에 닿아 있어도 잡은 것으로 본다', () => {
+  const hold = new ContainerHold()
+  const box = { x: 0.4, y: 0.4, width: 0.1, height: 0.2 }
+  assert.equal(hold.observe([], [box], 0, { x: 0.9, y: 0.1 }), false)
+  assert.equal(hold.observe([], [box], 100, { x: 0.45, y: 0.42 }), true)
+})
+
 test('용기를 잡았던 손은 6초 동안 기억한다', () => {
   const hold = new ContainerHold()
   const box = { x: 0.4, y: 0.4, width: 0.1, height: 0.2 }
@@ -183,4 +230,49 @@ test('사라진 얼굴 자리를 손이나 용기가 덮을 때만 가림으로 
   assert.equal(cover.observe(null, [], [{ x: 0.45, y: 0.25, width: 0.1, height: 0.3 }], 600), true)
   assert.equal(cover.observe(null, [{ x: 0.9, y: 0.9 }], [], 700), false)
   assert.equal(cover.observe(null, [{ x: 0.5, y: 0.3 }], [], 3500), false)
+})
+
+test('집는 손에 가려 상자가 사라져도 1.5초 안에 그 자리에 손이 오면 잡은 것으로 본다', () => {
+  const box = { x: 0.4, y: 0.6, width: 0.1, height: 0.2 }
+  const hand = [{ x: 0.45, y: 0.7 }]
+  const hold = new ContainerHold()
+  assert.equal(hold.observe([{ x: 0.9, y: 0.9 }], [box], 0), false)
+  assert.equal(hold.observe(hand, [], 1000), true)
+  assert.equal(hold.source, 'pickup')
+
+  const late = new ContainerHold()
+  late.observe([{ x: 0.9, y: 0.9 }], [box], 0)
+  assert.equal(late.observe(hand, [], 2000), false)
+  assert.equal(late.source, null)
+})
+
+test('손 주변 확대에서 찾은 상자는 확대 근거로 표시한다', () => {
+  const hold = new ContainerHold()
+  const zoomBox = { x: 0.4, y: 0.3, width: 0.05, height: 0.1 }
+  assert.equal(hold.observe([{ x: 0.42, y: 0.35 }], [], 0, null, [zoomBox]), true)
+  assert.equal(hold.source, 'zoom')
+  assert.equal(hold.observe([{ x: 0.42, y: 0.35 }], [zoomBox], 250), true)
+  assert.equal(hold.source, 'touch')
+})
+
+test('가슴 위로 올라온 손만 주변 확대 영역을 만든다', () => {
+  // 어깨 너비 0.2(화면비 1), 어깨 높이 0.5
+  const marks = []
+  marks[11] = { x: 0.4, y: 0.5, visibility: 1 }
+  marks[12] = { x: 0.6, y: 0.5, visibility: 1 }
+  marks[15] = { x: 0.3, y: 0.4, visibility: 1 }
+  marks[16] = { x: 0.7, y: 0.95, visibility: 1 }
+  const regions = handZoomRegions(marks, 1)
+  assert.equal(regions.length, 1)
+  const [region] = regions
+  assert.ok(Math.abs(region.width - 0.24) < 1e-9 && Math.abs(region.height - 0.24) < 1e-9)
+  assert.ok(Math.abs(region.x + region.width / 2 - 0.3) < 1e-9)
+
+  // 화면 가장자리에서는 영역을 화면 안으로 민다.
+  marks[15] = { x: 0.01, y: 0.4, visibility: 1 }
+  assert.equal(handZoomRegions(marks, 1)[0].x, 0)
+
+  // 어깨가 안 보이면 만들지 않는다.
+  marks[12] = { x: 0.6, y: 0.5, visibility: 0.2 }
+  assert.deepEqual(handZoomRegions(marks, 1), [])
 })
