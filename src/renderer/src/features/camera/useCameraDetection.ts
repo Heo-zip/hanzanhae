@@ -5,6 +5,7 @@ import {
   PoseLandmarker,
   type Detection
 } from '@mediapipe/tasks-vision'
+import { permissionSettingsHint } from '../../../../shared/platform'
 import wasmLoader from '../../../../../node_modules/@mediapipe/tasks-vision/wasm/vision_wasm_internal.js?url'
 import wasmBinary from '../../../../../node_modules/@mediapipe/tasks-vision/wasm/vision_wasm_internal.wasm?url'
 import objectModel from '../../assets/models/efficientdet_lite0.tflite?url'
@@ -500,7 +501,7 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
       setStatus('off')
       setMessage(
         name === 'NotAllowedError' || name === 'SecurityError'
-          ? '카메라 접근이 거부됐어요. Mac 시스템 설정에서 한잔해 카메라 권한을 확인해 주세요.'
+          ? `카메라 접근이 거부됐어요. ${permissionSettingsHint(window.hanzanhae?.platform ?? 'darwin', '카메라')}에서 한잔해 카메라 권한을 확인해 주세요.`
           : name === 'NotFoundError'
             ? '연결된 카메라를 찾지 못했어요.'
             : '카메라를 시작하지 못했어요. 카메라 연결과 권한을 확인해 주세요.'

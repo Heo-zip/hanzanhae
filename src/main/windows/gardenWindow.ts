@@ -6,6 +6,7 @@ import type {
   GardenSettingsChange,
   GardenSettingsResult
 } from '../../shared/appState'
+import { platformSupport } from '../../shared/platform'
 import { getDatabase, trusted } from '../storage/ipc'
 import {
   GARDEN_LEFT_PADDING,
@@ -223,7 +224,7 @@ ipcMain.on('garden:set-mouse-passthrough', (event, ignore: unknown) => {
     event.sender !== gardenWindow.webContents ||
     event.senderFrame !== event.sender.mainFrame ||
     typeof ignore !== 'boolean' ||
-    (process.platform !== 'darwin' && process.platform !== 'win32')
+    !platformSupport(process.platform).gardenClickThrough
   ) {
     return
   }
@@ -289,7 +290,8 @@ export function showGardenWindow(): void {
     })
   }
   // 마우스 움직임은 화면에 전달해 화분에 올렸을 때 다시 클릭을 받을 수 있다.
-  if (process.platform === 'darwin' || process.platform === 'win32') {
+  // Linux는 forward를 지원하지 않아 정원 창 전체가 클릭을 받는다(설정 화면에서 안내).
+  if (platformSupport(process.platform).gardenClickThrough) {
     window.setIgnoreMouseEvents(true, { forward: true })
   }
   // 숨기기나 렌더러 종료로 포인터 업을 받지 못하면 진행 중인 이동을 취소한다.

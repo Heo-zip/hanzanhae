@@ -1,5 +1,6 @@
 import { app, dialog } from 'electron'
 import { autoUpdater } from 'electron-updater'
+import { platformName, platformSupport } from '../../shared/platform'
 import { getDatabase } from '../storage/ipc'
 import { createUpdateController } from './controller'
 
@@ -22,7 +23,9 @@ export function initializeUpdates(): () => void {
       unavailable: () =>
         message(
           '업데이트를 확인할 수 없어요',
-          '업데이트 확인은 배포된 Mac 앱에서 사용할 수 있어요.'
+          platformSupport(process.platform).autoUpdate
+            ? '업데이트 확인은 설치한 앱에서 사용할 수 있어요.'
+            : `${platformName(process.platform)}에서는 자동 업데이트를 아직 지원하지 않아요. 새 버전은 배포 페이지에서 직접 받아 설치해 주세요.`
         ),
       busy: () =>
         message('업데이트를 확인하고 있어요', '진행 중인 작업이 끝날 때까지 잠시 기다려 주세요.'),
@@ -75,7 +78,7 @@ export function initializeUpdates(): () => void {
           '안전하게 업데이트를 멈췄어요. 앱을 다시 실행한 뒤 시도해 주세요.'
         )
     },
-    () => process.platform === 'darwin' && app.isPackaged,
+    () => platformSupport(process.platform).autoUpdate && app.isPackaged,
     () => getDatabase().checkpointPlant()
   )
 

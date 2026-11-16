@@ -29,6 +29,7 @@ declare global {
       endDrag: (point: { x: number; y: number }) => Promise<{ ok: boolean }>
     }
     hanzanhae: {
+      platform: string
       getState: () => Promise<AppResult>
       getGardenSettings: () => Promise<GardenSettingsResult>
       updateGardenSettings: (change: GardenSettingsChange) => Promise<GardenSettingsResult>

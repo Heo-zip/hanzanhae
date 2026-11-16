@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReminderSettings } from '../../../../shared/appState'
+import { permissionSettingsHint, platformName } from '../../../../shared/platform'
 import IntervalSelect from './IntervalSelect'
 import TimeSelect from './TimeSelect'
 import './reminders.css'
+
+const platform = window.hanzanhae?.platform ?? 'darwin'
+const settingsHint = permissionSettingsHint(platform, '알림')
+const unsupported = `${platformName(platform)}에서 시스템 알림을 지원하지 않아 알림을 표시할 수 없어요.`
 
 export default function ReminderSettingsPanel(): React.JSX.Element {
   const [draft, setDraft] = useState<ReminderSettings | null>(null)
@@ -57,9 +62,11 @@ export default function ReminderSettingsPanel(): React.JSX.Element {
           setError(
             '설정은 저장했어요. Mac 시스템 설정 → 알림에서 한잔해 개발의 알림을 확인해 주세요.'
           )
-        } else if (result.activation === 'failed' || result.activation === 'unsupported') {
+        } else if (result.activation === 'unsupported') {
+          setError(`설정은 저장했지만 ${unsupported}`)
+        } else if (result.activation === 'failed') {
           setError(
-            '설정은 저장했지만 알림을 표시하지 못했어요. Mac 알림 권한을 확인한 뒤 테스트 알림을 다시 눌러 주세요.'
+            `설정은 저장했지만 알림을 표시하지 못했어요. ${settingsHint}에서 한잔해 알림을 확인한 뒤 테스트 알림을 다시 눌러 주세요.`
           )
         } else if (result.activation === 'pending') {
           setMessage('설정을 저장했어요. 알림을 확인 중이니 잠시 후 테스트해 주세요.')
@@ -82,12 +89,13 @@ export default function ReminderSettingsPanel(): React.JSX.Element {
     try {
       const result = await window.hanzanhae.testReminder()
       if (result.ok)
-        setMessage('테스트 알림을 보냈어요. 보이지 않으면 Mac의 알림 설정을 확인해 주세요.')
+        setMessage(`테스트 알림을 보냈어요. 보이지 않으면 ${settingsHint}을 확인해 주세요.`)
       else if (result.code === 'DEV_NOTIFICATION_ERROR')
         setError(
           '알림을 보내지 못했어요. Mac 시스템 설정 → 알림에서 한잔해 개발의 알림을 확인해 주세요.'
         )
-      else setError('알림을 표시하지 못했어요. Mac의 시스템 설정에서 한잔해 알림을 확인해 주세요.')
+      else if (result.code === 'UNSUPPORTED') setError(unsupported)
+      else setError(`알림을 표시하지 못했어요. ${settingsHint}에서 한잔해 알림을 확인해 주세요.`)
     } catch {
       setError('알림을 표시하지 못했어요. 다시 시도해 주세요.')
     } finally {
