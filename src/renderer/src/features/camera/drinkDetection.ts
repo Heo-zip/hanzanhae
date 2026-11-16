@@ -32,6 +32,10 @@ const PICKUP_EMPTY_MS = 600
 const PICKUP_WINDOW_MS = 4000
 // 입 모양 측정값의 최고값을 보여줄 최근 시간
 const MOUTH_PEAK_MS = 3000
+// 빨대로 마실 때: 손이 입 근처인 채 입술을 이만큼 오므린 상태가 이 시간 이어지면 마시는 중으로 본다.
+// 고개를 젖히지 않아도 된다. 실측 전 임시값이며 측정 줄의 '입 오므림' 값과 비교해 조정한다.
+const STRAW_PUCKER = 0.45
+const STRAW_HOLD_MS = 500
 // 손 주변 확대 영역의 한 변(어깨 너비의 배수)과, 어깨 아래 얼마까지를 '든 손'으로 볼지(어깨 너비의 배수).
 const ZOOM_SIZE = 1.2
 const RAISED_BELOW_SHOULDER = 1
@@ -264,6 +268,8 @@ export type SipFrame = {
   handAtMouth: boolean | null
   /** 최근 몇 초 안에 용기를 잡은 손이 있었는지 */
   containerHeld: boolean
+  /** 얼굴 모델의 입 모양. 빨대로 마시는지 볼 때 쓴다. 얼굴을 못 찾으면 null */
+  mouth?: MouthShape | null
 }
 
 export type SipPhase = 'idle' | 'approach' | 'sipping'
@@ -274,6 +280,8 @@ export type SipResult = {
   lift: number | null
   poseLift: number | null
   source: HeadSource
+  /** 이번 마시기를 빨대(입 오므림)로 판단했는지 */
+  straw: boolean
 }
 
 /**
@@ -292,6 +300,8 @@ export class SipDetector {
   private poseNeutral: number[] = []
   private sawContainer = false
   private graceUntil = -Infinity
+  private puckerSince: number | null = null
+  private byStraw = false
 
   observe(frame: SipFrame, now: number): SipResult {
     const { pitch, handAtMouth, containerHeld } = frame
@@ -317,7 +327,14 @@ export class SipDetector {
             ? poseLift! >= POSE_LIFT
             : null
     let fired = false
-    const result = (): SipResult => ({ fired, phase: this.phase, lift, poseLift, source })
+    const result = (): SipResult => ({
+      fired,
+      phase: this.phase,
+      lift,
+      poseLift,
+      source,
+      straw: this.phase !== 'idle' && this.byStraw
+    })
 
     const fire = (): boolean => {
       if (now - this.lastFired < SIP_COOLDOWN_MS) return false
@@ -340,6 +357,8 @@ export class SipDetector {
         this.tiltSince = null
         this.sawContainer = containerHeld
         this.graceUntil = -Infinity
+        this.puckerSince = null
+        this.byStraw = false
       }
       return result()
     }
@@ -349,6 +368,16 @@ export class SipDetector {
       this.tiltSince ??= now
       if (now - this.tiltSince >= SIP_HOLD_MS) this.phase = 'sipping'
     } else if (tilted === false) this.tiltSince = null
+
+    // 빨대: 고개를 젖히지 않고 손을 입에 댄 채 입술을 오므리고 있으면 마시는 중으로 본다.
+    const puckered = handAtMouth === true && (frame.mouth?.pucker ?? 0) >= STRAW_PUCKER
+    if (puckered) {
+      this.puckerSince ??= now
+      if (now - this.puckerSince >= STRAW_HOLD_MS && this.phase !== 'sipping') {
+        this.phase = 'sipping'
+        this.byStraw = true
+      }
+    } else this.puckerSince = null
 
     if (handAtMouth === true) {
       this.lastAtMouth = now
@@ -394,7 +423,7 @@ export function mouthShape(
 }
 
 /**
- * 빨대로 마실 때의 입 모양 기준을 정하기 위한 측정용 값이다. 판정에는 쓰지 않는다.
+ * 빨대 판정 기준(STRAW_PUCKER)을 조정할 때 보는 측정 값이다.
  * 4Hz로 빠르게 바뀌어 읽기 어려우므로 최근 몇 초의 최고값도 함께 돌려준다.
  */
 export class MouthShapeMeter {
