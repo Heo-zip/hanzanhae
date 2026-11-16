@@ -1,5 +1,7 @@
 # 다음 작업
 
+> 진행: 생기 기준 개편과 정원 감지 알림(`feature/vitality-garden`). 생기 계산·기록별 되돌림·자리 비움 감지, 정원 감지 연출·되돌리기, 5단계 사진 임시 연결을 구현하고 자동·임시 프로필 앱 검사를 마쳤다. 새 식물 사진 20장과 실제 카메라·잠금 확인이 남았다. [결과](features/plant-vitality-REPORT.md)
+
 > 진행: [#47](https://github.com/Heo-zip/hanzanhae/issues/47) 카메라 감지를 오늘 마신 횟수에 자동 기록하고 사이드바에서 되돌리기를 제공한다. 가짜 API 화면으로 기록·되돌리기·실패 안내를 확인했고 실제 카메라 확인이 남았다.
 
 > 완료: [#45](https://github.com/Heo-zip/hanzanhae/issues/45) 패키지 보안·성능 정리. Electron fuses(RunAsNode·NODE_OPTIONS·--inspect 차단, asar 무결성 검사·asar 전용 실행) 적용, 불필요한 macOS 권한 2개 제거, MediaPipe 중복 포함 제거(app.asar 54.8MB → 31.9MB), 카메라를 켠 동안만 대시보드 백그라운드 제한 해제, SQL 문 재사용. 로컬 ad-hoc 패키지 실행은 확인했고 서명 앱의 카메라 동작은 미확인이다.

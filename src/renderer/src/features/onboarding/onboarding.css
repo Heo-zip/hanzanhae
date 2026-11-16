@@ -230,6 +230,8 @@
   text-align: right;
   color: var(--text);
   letter-spacing: -1px;
+  /* 굵은 숫자의 오른쪽 끝이 입력칸 경계에서 잘리지 않도록 여백을 둔다. */
+  padding: 0 6px 0 0;
   -moz-appearance: textfield;
 }
 .amount-field input::-webkit-outer-spin-button,

@@ -73,6 +73,6 @@ test('시간·간격 설정을 검사하고 식물 생기에 따라 문구를 �
     { ...settings, endTime: '09:00' }
   ])
     assert.equal(validReminderSettings(bad), false)
-  assert.match(reminderBody(44), /말라/)
-  assert.match(reminderBody(45), /목이 말라/)
+  assert.match(reminderBody(49), /말라/)
+  assert.match(reminderBody(50), /목이 말라/)
 })

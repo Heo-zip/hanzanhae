@@ -45,6 +45,7 @@ declare global {
       recordDrinkAction: (input: DrinkActionInput) => Promise<AppResult>
       cancelWater: (input: CancelWaterInput) => Promise<CancelWaterResult>
       onWaterRecorded: (callback: () => void) => () => void
+      onDrinkDetected: (callback: (recordId: number) => void) => () => void
       onStateChanged: (callback: () => void) => () => void
     }
   }

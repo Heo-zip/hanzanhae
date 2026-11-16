@@ -62,6 +62,13 @@ contextBridge.exposeInMainWorld('hanzanhae', {
     ipcRenderer.on('app:water-recorded', listener)
     return () => ipcRenderer.removeListener('app:water-recorded', listener)
   },
+  onDrinkDetected: (callback: (recordId: number) => void) => {
+    const listener = (_: unknown, recordId: unknown): void => {
+      if (typeof recordId === 'number') callback(recordId)
+    }
+    ipcRenderer.on('app:drink-detected', listener)
+    return () => ipcRenderer.removeListener('app:drink-detected', listener)
+  },
   onStateChanged: (callback: () => void) => {
     const listener = (): void => callback()
     ipcRenderer.on('app:state-changed', listener)

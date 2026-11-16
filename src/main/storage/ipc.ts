@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, powerMonitor } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
@@ -23,6 +23,12 @@ import {
 } from './database'
 
 let database: AppDatabase | undefined
+// 대시보드의 카메라 감지가 켜져 있는지. 카메라 기록 주장과 텀블러 생기 보상을 앱 본체가 판단한다.
+let cameraActive = false
+
+export function setCameraActive(active: boolean): void {
+  cameraActive = active
+}
 
 export function getDatabase(): AppDatabase {
   if (!database) database = new AppDatabase(join(app.getPath('userData'), 'hanzanhae.sqlite'))
@@ -47,6 +53,15 @@ export function trusted(event: Electron.IpcMainInvokeEvent | Electron.IpcMainEve
     )
   } catch {
     return false
+  }
+}
+
+function sendToGarden(garden: BrowserWindow | null, channel: string, value: number): void {
+  if (!garden || garden.isDestroyed() || garden.webContents.isDestroyed()) return
+  try {
+    garden.webContents.send(channel, value)
+  } catch {
+    // 정원은 다음 상태 조회에서 기록을 반영한다. 알림만 놓친다.
   }
 }
 
@@ -129,7 +144,7 @@ export function initializeStorageIpc(
     )
       return { ok: false, code: 'VALIDATION_ERROR' }
     try {
-      const result = getDatabase().recordCup(input)
+      const result = getDatabase().recordCup(input, { cameraActive })
       if (result.created) broadcast('app:state-changed', 'app:water-recorded')
       return { ok: true, ...result }
     } catch (error) {
@@ -139,16 +154,24 @@ export function initializeStorageIpc(
     }
   })
   ipcMain.handle('app:record-drink-action', (event, input: DrinkActionInput): AppResult => {
+    const fromDashboard = event.sender === getDashboard()?.webContents
+    const fromGarden = event.sender === getGarden()?.webContents
     if (
       !trusted(event) ||
-      event.sender !== getDashboard()?.webContents ||
+      (!fromDashboard && !fromGarden) ||
       !input ||
-      typeof input !== 'object'
+      typeof input !== 'object' ||
+      // 정원은 방금 카메라가 저장한 기록을 되돌리는 것만 할 수 있다.
+      (fromGarden && input.kind !== 'undo') ||
+      (input.kind === 'add' && input.source === 'camera' && !cameraActive)
     )
       return { ok: false, code: 'VALIDATION_ERROR' }
     try {
-      const result = getDatabase().recordDrinkAction(input)
+      const result = getDatabase().recordDrinkAction(input, { recentCameraOnly: fromGarden })
       if (result.created) broadcast('app:state-changed')
+      const detected = result.state.status === 'ready' ? result.state.latestDrinkId : null
+      if (result.created && input.kind === 'add' && input.source === 'camera' && detected !== null)
+        sendToGarden(getGarden(), 'app:drink-detected', detected)
       return { ok: true, state: result.state }
     } catch (error) {
       if (error instanceof InvalidSetupError) return { ok: false, code: 'VALIDATION_ERROR' }
@@ -187,7 +210,25 @@ export function initializeStorageIpc(
       // 다음 조회나 저장에서 오류를 안내한다.
     }
   }, 60_000)
+  // 화면 잠금·잠자기 동안은 자리를 비운 것으로 보고 생기를 천천히 줄인다.
+  const setPresence = (presence: 'active' | 'away') => (): void => {
+    try {
+      database?.setPresence(presence)
+    } catch {
+      // 다음 저장에서 다시 계산한다.
+    }
+  }
+  const away = setPresence('away')
+  const active = setPresence('active')
+  powerMonitor.on('lock-screen', away)
+  powerMonitor.on('suspend', away)
+  powerMonitor.on('unlock-screen', active)
+  powerMonitor.on('resume', active)
   app.once('will-quit', () => {
+    powerMonitor.off('lock-screen', away)
+    powerMonitor.off('suspend', away)
+    powerMonitor.off('unlock-screen', active)
+    powerMonitor.off('resume', active)
     clearInterval(plantTimer)
     database?.close()
     database = undefined

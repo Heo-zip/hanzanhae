@@ -9,6 +9,7 @@ export type AppState =
       goalCount: number
       todayCount: number
       latestDrinkId: number | null
+      todayDrinks: DrinkRecord[]
       cupMl: number
       todayMl: number
       todayRecords: WaterRecord[]
@@ -18,6 +19,7 @@ export type AppState =
       status: 'goal-stopped'
       todayCount: number
       latestDrinkId: number | null
+      todayDrinks: DrinkRecord[]
       cupMl: number
       todayMl: number
       todayRecords: WaterRecord[]
@@ -25,12 +27,16 @@ export type AppState =
     } & PlantStatus)
 
 export type WaterRecord = { id: number; goalId: number; amountMl: number; recordedAt: string }
+/** 오늘 마신 횟수 한 번. 최신 순으로 담는다. */
+export type DrinkRecord = { id: number; recordedAt: string; source: 'button' | 'camera' }
 export type DrinkActionInput = {
   requestId: string
   expectedGoalId: number
   day: string
   kind: 'add' | 'undo'
   recordId?: number
+  /** 추가할 때만 쓴다. 없으면 버튼으로 본다. */
+  source?: 'button' | 'camera'
 }
 export type RecordCupInput = { requestId: string; expectedGoalId: number; day: string }
 export type RecordCupResult =
@@ -45,6 +51,9 @@ export type CancelWaterInput =
       expectedGoalId: number
       day: string
       expectedRecordIds: number[]
+      /** 화면에서 확인한 오늘 마신 횟수와 그 마지막 기록. 전체 취소는 횟수도 함께 취소한다. */
+      expectedDrinkCount: number
+      expectedLatestDrinkId: number | null
     }
 export type CancelWaterResult =
   | { ok: true; state: AppState; cancelledCount: number; created: boolean }
