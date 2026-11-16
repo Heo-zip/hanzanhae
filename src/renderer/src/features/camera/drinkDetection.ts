@@ -23,8 +23,15 @@ const SIP_COOLDOWN_MS = 5000
 const HOLD_MEMORY_MS = 6000
 // 빠르게 들어 마시면 드는 순간 용기를 놓치므로, 내린 뒤 이 시간 안에 용기가 보여도 인정한다.
 const CONTAINER_GRACE_MS = 1500
-// 집는 손에 가려 상자가 사라져도 이 시간 동안은 그 자리를 용기로 본다.
-const BOX_MEMORY_MS = 1500
+// 손이 닿지 않은 채 보인 상자를 '제자리 용기'로 기억하는 시간과, 같은 자리로 볼 겹침 비율(IoU).
+const REST_MEMORY_MS = 10000
+const REST_OVERLAP = 0.3
+// 제자리 용기를 잡은 뒤 손을 든 동안 그 자리가 이만큼 비어 있어야 집어 든 것으로 본다.
+const PICKUP_EMPTY_MS = 600
+// 잡은 뒤 이 시간 안에 자리가 비지 않으면 집기 후보를 버린다.
+const PICKUP_WINDOW_MS = 4000
+// 입 모양 측정값의 최고값을 보여줄 최근 시간
+const MOUTH_PEAK_MS = 3000
 // 손 주변 확대 영역의 한 변(어깨 너비의 배수)과, 어깨 아래 얼마까지를 '든 손'으로 볼지(어깨 너비의 배수).
 const ZOOM_SIZE = 1.2
 const RAISED_BELOW_SHOULDER = 1
@@ -53,17 +60,32 @@ export function isHandAtMouth(
 /** 들었다고 본 근거. 화면 전체에서 닿음 / 손 주변 확대에서 찾음 / 가려지기 직전 상자 / 입에 닿음 */
 export type HoldSource = 'touch' | 'zoom' | 'pickup' | 'mouth'
 
+function overlap(a: Box, b: Box): number {
+  const width = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)
+  const height = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y)
+  if (width <= 0 || height <= 0) return 0
+  const shared = width * height
+  return shared / (a.width * a.height + b.width * b.height - shared)
+}
+
 /**
- * 손이 용기를 잡았는지 본다. 잡은 뒤 가려져도 잠시 기억한다.
- * - touch: 화면 전체 검출 상자에 손 점이 닿음
- * - zoom: 손 주변을 확대해 다시 찾은 상자에 손 점이 닿음
- * - pickup: 방금 전까지 보이던 상자 자리에 손이 옴(집는 손에 가려 상자가 사라진 경우)
- * - mouth: 용기 상자가 입에 닿음
+ * 손이 용기를 들었는지 본다. 들고 난 뒤 가려져도 잠시 기억한다.
+ *
+ * "손 근처에 상자가 있다"만으로는 들었다고 보지 않는다. 책상에 놓인 병 옆을 손이 스치거나,
+ * 입에 손을 댈 때 병이 같은 화면 영역에 있기만 해도 통과되는 오감지가 있었기 때문이다.
+ * 손이 닿지 않은 채 보인 상자는 '제자리 용기'로 기억하고, 그 자리에 있는 상자는
+ * 자리를 떠나야(손이 가슴 위로 든 동안 그 자리가 비어야) 들었다고 인정한다.
+ *
+ * - touch: 제자리 용기가 아닌 상자에 손 점이 닿음(손과 함께 움직이는 용기)
+ * - zoom: 손 주변을 확대해 찾은, 제자리 용기가 아닌 상자에 손 점이 닿음
+ * - pickup: 손이 제자리 용기를 잡은 뒤, 손을 든 동안 그 자리가 비어 있음
+ * - mouth: 제자리 용기가 아닌 상자가 입에 닿음
  */
 export class ContainerHold {
   private heldAt = -Infinity
   private lastSource: HoldSource | null = null
-  private seen: { box: Box; at: number }[] = []
+  private rest: { box: Box; at: number }[] = []
+  private grab: { box: Box; at: number; emptySince: number | null } | null = null
 
   get source(): HoldSource | null {
     return this.lastSource
@@ -74,27 +96,61 @@ export class ContainerHold {
     boxes: Box[],
     now: number,
     mouth: Point | null = null,
-    zoomBoxes: Box[] = []
+    zoomBoxes: Box[] = [],
+    handRaised = false
   ): boolean {
-    const touches = (list: Box[]): boolean =>
-      handPoints.some((point) => list.some((box) => distanceToBox(point, box) <= 0.05))
-    const recent = this.seen
-      .filter((item) => now - item.at <= BOX_MEMORY_MS)
-      .map((item) => item.box)
-    const found: HoldSource | null = touches(boxes)
+    const near = (box: Box): boolean =>
+      handPoints.some((point) => distanceToBox(point, box) <= 0.05)
+    this.rest = this.rest.filter((item) => now - item.at <= REST_MEMORY_MS)
+    const restSpot = (box: Box): { box: Box; at: number } | undefined =>
+      this.rest.find((item) => overlap(item.box, box) >= REST_OVERLAP)
+    const moving = (box: Box): boolean => restSpot(box) === undefined
+
+    let found: HoldSource | null = boxes.some((box) => near(box) && moving(box))
       ? 'touch'
-      : touches(zoomBoxes)
+      : zoomBoxes.some((box) => near(box) && moving(box))
         ? 'zoom'
         : mouth !== null &&
-            [...boxes, ...zoomBoxes].some((box) => distanceToBox(mouth, box) <= 0.05)
+            [...boxes, ...zoomBoxes].some((box) => distanceToBox(mouth, box) <= 0.05 && moving(box))
           ? 'mouth'
-          : touches(recent)
-            ? 'pickup'
-            : null
-    this.seen = [
-      ...this.seen.filter((item) => now - item.at <= BOX_MEMORY_MS),
-      ...[...boxes, ...zoomBoxes].map((box) => ({ box, at: now }))
-    ].slice(-20)
+          : null
+
+    // 제자리 용기에 손이 닿으면 집으려는 것일 수 있으니 그 자리를 지켜본다.
+    const touchedSpot = [...boxes, ...zoomBoxes].map(restSpot).find((spot, index) => {
+      const box = [...boxes, ...zoomBoxes][index]
+      return spot !== undefined && near(box)
+    })
+    if (touchedSpot && !this.grab) this.grab = { box: touchedSpot.box, at: now, emptySince: null }
+    if (this.grab) {
+      const stillThere = [...boxes, ...zoomBoxes].some(
+        (box) => overlap(box, this.grab!.box) >= REST_OVERLAP
+      )
+      const handOnSpot = near(this.grab.box)
+      if (stillThere && !handOnSpot) {
+        // 손이 떠났는데 용기가 그대로 있으면 들지 않은 것이다.
+        this.grab = null
+      } else if (!stillThere && handRaised) {
+        this.grab.emptySince ??= now
+        if (now - this.grab.emptySince >= PICKUP_EMPTY_MS) {
+          found ??= 'pickup'
+          this.rest = this.rest.filter((item) => item.box !== this.grab!.box)
+          this.grab = null
+        }
+      } else this.grab.emptySince = null
+      if (this.grab && now - this.grab.at > PICKUP_WINDOW_MS) this.grab = null
+    }
+
+    // 손이 닿지 않은 상자는 제자리 용기로 기억한다. 같은 자리면 위치·시각만 갱신한다.
+    for (const box of [...boxes, ...zoomBoxes]) {
+      if (near(box) || (mouth !== null && distanceToBox(mouth, box) <= 0.05)) continue
+      const spot = restSpot(box)
+      if (spot) {
+        spot.box = box
+        spot.at = now
+      } else this.rest.push({ box, at: now })
+    }
+    this.rest = this.rest.slice(-10)
+
     if (found) {
       this.heldAt = now
       this.lastSource = found
@@ -317,4 +373,42 @@ function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b)
   const middle = Math.floor(sorted.length / 2)
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2
+}
+
+export type MouthShape = { pucker: number; funnel: number }
+export type MouthShapeReading = {
+  current: MouthShape | null
+  peak: MouthShape | null
+}
+
+/** Face Landmarker 표정 값 목록에서 입술 오므리기(mouthPucker)·입술 모으기(mouthFunnel)를 꺼낸다. */
+export function mouthShape(
+  categories: { categoryName: string; score: number }[] | undefined
+): MouthShape | null {
+  if (!categories?.length) return null
+  const score = (name: string): number | undefined =>
+    categories.find((item) => item.categoryName === name)?.score
+  const pucker = score('mouthPucker')
+  const funnel = score('mouthFunnel')
+  return pucker === undefined || funnel === undefined ? null : { pucker, funnel }
+}
+
+/**
+ * 빨대로 마실 때의 입 모양 기준을 정하기 위한 측정용 값이다. 판정에는 쓰지 않는다.
+ * 4Hz로 빠르게 바뀌어 읽기 어려우므로 최근 몇 초의 최고값도 함께 돌려준다.
+ */
+export class MouthShapeMeter {
+  private samples: { at: number; shape: MouthShape }[] = []
+
+  observe(shape: MouthShape | null, now: number): MouthShapeReading {
+    this.samples = this.samples.filter((item) => now - item.at <= MOUTH_PEAK_MS)
+    if (shape) this.samples.push({ at: now, shape })
+    const peak = this.samples.length
+      ? {
+          pucker: Math.max(...this.samples.map((item) => item.shape.pucker)),
+          funnel: Math.max(...this.samples.map((item) => item.shape.funnel))
+        }
+      : null
+    return { current: shape, peak }
+  }
 }

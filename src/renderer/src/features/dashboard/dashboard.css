@@ -1247,6 +1247,23 @@ main {
   color: var(--text-sub);
   font-size: 12px;
 }
+.camera-measure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+  margin: 10px 0 0;
+  color: var(--text-sub);
+  font-size: 12px;
+}
+.camera-measure b {
+  color: var(--text);
+  font-size: 13px;
+}
+.camera-measure small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
 .camera-legend li {
   display: flex;
   align-items: center;

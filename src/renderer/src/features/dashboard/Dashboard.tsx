@@ -646,6 +646,13 @@ function CameraView({
           <li className="hand">손·확대 영역</li>
           <li className="mouth">입</li>
         </ul>
+        {/* 빨대 음용 기준을 정하기 위한 측정용 표시다. 판정에는 아직 쓰지 않는다. */}
+        <p className="camera-measure" aria-label="입 모양 측정값">
+          입 오므림 <b className="num">{status?.mouth ? status.mouth.pucker.toFixed(2) : '–'}</b>
+          <small>3초 최고 {status?.mouthPeak ? status.mouthPeak.pucker.toFixed(2) : '–'}</small>·
+          입술 모음 <b className="num">{status?.mouth ? status.mouth.funnel.toFixed(2) : '–'}</b>
+          <small>3초 최고 {status?.mouthPeak ? status.mouthPeak.funnel.toFixed(2) : '–'}</small>
+        </p>
       </div>
     </div>
   )

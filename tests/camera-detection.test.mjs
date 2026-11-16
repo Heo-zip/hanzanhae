@@ -20,7 +20,9 @@ const {
   ContainerHold,
   poseHead,
   FaceCover,
-  handZoomRegions
+  handZoomRegions,
+  mouthShape,
+  MouthShapeMeter
 } = module.exports
 
 /** 평소 자세를 5프레임 보여 기준 각도를 만든다. */
@@ -148,17 +150,26 @@ test('8도만 젖혀도 마신 것으로 본다', () => {
   assert.equal(sip(detector, calm(detector), { lift: 8, hold: 500 }).count, 1)
 })
 
-test('용기가 입에 닿아 있어도 잡은 것으로 본다', () => {
+test('들고 온 용기가 입에 닿아 있으면 잡은 것으로 본다', () => {
+  const hold = new ContainerHold()
+  const box = { x: 0.4, y: 0.4, width: 0.1, height: 0.2 }
+  assert.equal(hold.observe([], [], 0, { x: 0.45, y: 0.42 }), false)
+  assert.equal(hold.observe([], [box], 100, { x: 0.45, y: 0.42 }), true)
+  assert.equal(hold.source, 'mouth')
+})
+
+test('제자리에 놓인 용기는 입이 다가가도 잡은 것으로 보지 않는다', () => {
   const hold = new ContainerHold()
   const box = { x: 0.4, y: 0.4, width: 0.1, height: 0.2 }
   assert.equal(hold.observe([], [box], 0, { x: 0.9, y: 0.1 }), false)
-  assert.equal(hold.observe([], [box], 100, { x: 0.45, y: 0.42 }), true)
+  assert.equal(hold.observe([], [box], 100, { x: 0.45, y: 0.42 }), false)
 })
 
 test('용기를 잡았던 손은 6초 동안 기억한다', () => {
   const hold = new ContainerHold()
   const box = { x: 0.4, y: 0.4, width: 0.1, height: 0.2 }
-  assert.equal(hold.observe([{ x: 0.9, y: 0.9 }], [box], 0), false)
+  // 처음부터 손과 함께 보인 용기(제자리에 놓인 적 없음)
+  assert.equal(hold.observe([{ x: 0.9, y: 0.9 }], [], 0), false)
   assert.equal(hold.observe([{ x: 0.45, y: 0.5 }], [box], 100), true)
   assert.equal(hold.observe([], [], 6000), true)
   assert.equal(hold.observe([], [], 6200), false)
@@ -232,18 +243,51 @@ test('사라진 얼굴 자리를 손이나 용기가 덮을 때만 가림으로 
   assert.equal(cover.observe(null, [{ x: 0.5, y: 0.3 }], [], 3500), false)
 })
 
-test('집는 손에 가려 상자가 사라져도 1.5초 안에 그 자리에 손이 오면 잡은 것으로 본다', () => {
-  const box = { x: 0.4, y: 0.6, width: 0.1, height: 0.2 }
-  const hand = [{ x: 0.45, y: 0.7 }]
+test('제자리 용기를 잡고 손을 든 동안 그 자리가 비면 집어 든 것으로 본다', () => {
+  const desk = { x: 0.4, y: 0.7, width: 0.1, height: 0.2 }
+  const onBottle = [{ x: 0.45, y: 0.8 }]
+  const atMouth = [{ x: 0.45, y: 0.35 }]
   const hold = new ContainerHold()
-  assert.equal(hold.observe([{ x: 0.9, y: 0.9 }], [box], 0), false)
-  assert.equal(hold.observe(hand, [], 1000), true)
+  assert.equal(hold.observe([{ x: 0.9, y: 0.9 }], [desk], 0), false)
+  // 손이 병을 잡음(아직 들었다고 보지 않음)
+  assert.equal(hold.observe(onBottle, [desk], 250), false)
+  // 손을 들어 올렸고 병 자리가 비어 있음
+  assert.equal(hold.observe(atMouth, [], 500, null, [], true), false)
+  assert.equal(hold.observe(atMouth, [], 750, null, [], true), false)
+  assert.equal(hold.observe(atMouth, [], 1100, null, [], true), true)
   assert.equal(hold.source, 'pickup')
+})
 
-  const late = new ContainerHold()
-  late.observe([{ x: 0.9, y: 0.9 }], [box], 0)
-  assert.equal(late.observe(hand, [], 2000), false)
-  assert.equal(late.source, null)
+test('제자리 용기를 만지기만 하고 손을 떼면 집은 것으로 보지 않는다', () => {
+  const desk = { x: 0.4, y: 0.7, width: 0.1, height: 0.2 }
+  const hold = new ContainerHold()
+  hold.observe([{ x: 0.9, y: 0.9 }], [desk], 0)
+  hold.observe([{ x: 0.45, y: 0.8 }], [desk], 250)
+  // 손은 입으로 갔지만 병은 그 자리에 그대로 보임
+  for (let t = 500; t <= 3000; t += 250)
+    assert.equal(hold.observe([{ x: 0.45, y: 0.35 }], [desk], t, null, [], true), false)
+})
+
+test('화면에 병만 놓여 있고 빈손을 입에 대고 고개를 젖히면 마신 것으로 세지 않는다', () => {
+  const desk = { x: 0.7, y: 0.7, width: 0.1, height: 0.2 }
+  const mouth = { x: 0.5, y: 0.35 }
+  const hold = new ContainerHold()
+  const detector = new SipDetector()
+  let t = 0
+  let fired = 0
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- 테스트 보조 함수다.
+  const frame = (hand, pitch, handAtMouth, zoomBoxes = []) => {
+    const held = hold.observe(hand, [desk], t, mouth, zoomBoxes, hand[0].y < 0.6)
+    if (detector.observe({ pitch, handAtMouth, containerHeld: held }, t).fired) fired += 1
+    t += 250
+  }
+  for (let i = 0; i < 5; i += 1) frame([{ x: 0.3, y: 0.9 }], 0, false)
+  // 손을 병 옆에 잠깐 둠(스침)
+  frame([{ x: 0.74, y: 0.8 }], 0, false)
+  // 빈손을 입에 대고 고개를 젖힘. 확대 영역에도 같은 병이 잡힘
+  for (let i = 0; i < 6; i += 1) frame([{ x: 0.5, y: 0.38 }], 15, true, [desk])
+  for (let i = 0; i < 12; i += 1) frame([{ x: 0.3, y: 0.9 }], 0, false)
+  assert.equal(fired, 0)
 })
 
 test('손 주변 확대에서 찾은 상자는 확대 근거로 표시한다', () => {
@@ -275,4 +319,28 @@ test('가슴 위로 올라온 손만 주변 확대 영역을 만든다', () => {
   // 어깨가 안 보이면 만들지 않는다.
   marks[12] = { x: 0.6, y: 0.5, visibility: 0.2 }
   assert.deepEqual(handZoomRegions(marks, 1), [])
+})
+
+test('표정 값에서 입술 오므리기·모으기만 꺼낸다', () => {
+  const categories = [
+    { categoryName: 'jawOpen', score: 0.4 },
+    { categoryName: 'mouthPucker', score: 0.62 },
+    { categoryName: 'mouthFunnel', score: 0.18 }
+  ]
+  assert.deepEqual(mouthShape(categories), { pucker: 0.62, funnel: 0.18 })
+  assert.equal(mouthShape([]), null)
+  assert.equal(mouthShape(undefined), null)
+  assert.equal(mouthShape([{ categoryName: 'mouthPucker', score: 0.5 }]), null)
+})
+
+test('입 모양 측정은 현재 값과 최근 3초 최고값을 돌려준다', () => {
+  const meter = new MouthShapeMeter()
+  meter.observe({ pucker: 0.7, funnel: 0.1 }, 0)
+  const reading = meter.observe({ pucker: 0.2, funnel: 0.3 }, 1000)
+  assert.deepEqual(reading.current, { pucker: 0.2, funnel: 0.3 })
+  assert.deepEqual(reading.peak, { pucker: 0.7, funnel: 0.3 })
+  // 얼굴을 놓쳐도 최근 최고값은 남고, 3초가 지나면 빠진다.
+  assert.deepEqual(meter.observe(null, 2000).peak, { pucker: 0.7, funnel: 0.3 })
+  assert.deepEqual(meter.observe(null, 3500).peak, { pucker: 0.2, funnel: 0.3 })
+  assert.equal(meter.observe(null, 5000).peak, null)
 })

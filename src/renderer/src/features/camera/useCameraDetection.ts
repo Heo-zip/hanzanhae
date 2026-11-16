@@ -15,12 +15,15 @@ import {
   FaceCover,
   SipDetector,
   handZoomRegions,
+  mouthShape,
+  MouthShapeMeter,
   headPitchUp,
   isHandAtMouth,
   poseHead,
   type Box,
   type HeadSource,
   type HoldSource,
+  type MouthShape,
   type Point,
   type SipPhase
 } from './drinkDetection'
@@ -44,6 +47,9 @@ type DetectionStatus = {
   held: boolean
   holdSource: HoldSource | null
   sipPhase: SipPhase
+  /** 빨대 음용 기준을 정하기 위한 입 모양 측정값(0~1, 소수 둘째 자리). 판정에는 쓰지 않는다. */
+  mouth: MouthShape | null
+  mouthPeak: MouthShape | null
 }
 
 type Resources = {
@@ -131,6 +137,12 @@ function drawPreview(
       context.fill()
     }
   }
+}
+
+function roundShape(shape: MouthShape | null): MouthShape | null {
+  return shape
+    ? { pucker: Math.round(shape.pucker * 100) / 100, funnel: Math.round(shape.funnel * 100) / 100 }
+    : null
 }
 
 // 손 주변 확대 이미지 크기. EfficientDet-Lite0 입력 크기와 같다.
@@ -246,7 +258,9 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
         // 고개를 돌리거나 일부가 가려져도 추적이 덜 끊기도록 기본값 0.5보다 낮춘다.
         minFacePresenceConfidence: 0.3,
         minTrackingConfidence: 0.3,
-        outputFacialTransformationMatrixes: true
+        outputFacialTransformationMatrixes: true,
+        // 빨대 음용 측정을 위해 입술 오므리기 등 표정 값을 함께 받는다.
+        outputFaceBlendshapes: true
       })
       if (isCancelled()) return
       local.pose = await PoseLandmarker.createFromOptions(fileset, {
@@ -276,6 +290,7 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
       const faceMesh = local.faceMesh
       const pose = local.pose
       const sipDetector = new SipDetector()
+      const mouthMeter = new MouthShapeMeter()
       const containerHold = new ContainerHold()
       const faceCover = new FaceCover()
       let lastTime = -1
@@ -308,6 +323,10 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
 
           // 얼굴 모델: 고개 각도, 입, 얼굴 크기와 영역
           const meshResult = faceMesh.detectForVideo(video, now)
+          const mouthReading = mouthMeter.observe(
+            mouthShape(meshResult.faceBlendshapes?.[0]?.categories),
+            now
+          )
           const faceMarks = meshResult.faceLandmarks[0]
           const matrix = meshResult.facialTransformationMatrixes?.[0]?.data
           const pitch = matrix ? headPitchUp(matrix) : null
@@ -378,7 +397,8 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
             boxes,
             now,
             meshMouth ?? head?.mouth ?? null,
-            zoomBoxes
+            zoomBoxes,
+            zoomRegions.length > 0
           )
           const covered =
             faceCover.observe(faceBox, handPoints, [...boxes, ...zoomBoxes], now) && held
@@ -401,12 +421,14 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
               handAtMouth,
               held,
               holdSource: containerHold.source,
-              sipPhase: sip.phase
+              sipPhase: sip.phase,
+              mouth: roundShape(mouthReading.current),
+              mouthPeak: roundShape(mouthReading.peak)
             }
             setDetectionStatus((previous) =>
               previous &&
               (Object.keys(next) as (keyof DetectionStatus)[]).every(
-                (key) => previous[key] === next[key]
+                (key) => JSON.stringify(previous[key]) === JSON.stringify(next[key])
               )
                 ? previous
                 : next
