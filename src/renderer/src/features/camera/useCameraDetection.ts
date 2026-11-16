@@ -18,6 +18,7 @@ import {
   handZoomRegions,
   mouthShape,
   MouthShapeMeter,
+  countsAsContainer,
   headPitchUp,
   isHandAtMouth,
   poseHead,
@@ -62,18 +63,31 @@ type Resources = {
   faceMesh?: FaceLandmarker
   pose?: PoseLandmarker
   timer?: number
+  frame?: number
   video?: HTMLVideoElement
+}
+
+/** 마지막 분석 결과. 미리보기는 매 화면마다 영상 위에 이것을 겹쳐 그린다. */
+type Overlay = {
+  face: Box | null
+  objects: (Detection & { zoomed?: boolean })[]
+  handPoints: Point[]
+  mouth: Point | null
+  zoomRegions: Box[]
+}
+const EMPTY_OVERLAY: Overlay = {
+  face: null,
+  objects: [],
+  handPoints: [],
+  mouth: null,
+  zoomRegions: []
 }
 
 /** 미리보기에 얼굴(초록)·용기(파랑)·손목과 손끝(보라)·입(빨강)을 거울처럼 그린다. */
 function drawPreview(
   canvas: HTMLCanvasElement,
   video: HTMLVideoElement,
-  face: Box | null,
-  objects: (Detection & { zoomed?: boolean })[],
-  handPoints: Point[],
-  mouth: Point | null,
-  zoomRegions: Box[]
+  { face, objects, handPoints, mouth, zoomRegions }: Overlay
 ): void {
   const width = video.videoWidth
   const height = video.videoHeight
@@ -118,16 +132,21 @@ function drawPreview(
     const box = object.boundingBox
     if (!box) continue
     const x = width - box.originX - box.width
-    context.strokeStyle = '#77c7ff'
-    context.strokeRect(x, box.originY, box.width, box.height)
     const category = object.categories[0]
+    // 점수가 낮아 판정에 쓰지 않는 상자는 회색으로 그린다.
+    const ignored = !countsAsContainer(category?.score, Boolean(object.zoomed))
+    context.strokeStyle = ignored ? '#9aa5ad' : '#77c7ff'
+    context.strokeRect(x, box.originY, box.width, box.height)
     const label =
-      (category?.categoryName === 'bottle' ? '물병' : '컵') + (object.zoomed ? '(확대)' : '')
+      (category?.categoryName === 'bottle' ? '물병' : '컵') +
+      (object.zoomed ? '(확대)' : '') +
+      (ignored ? '·무시' : '')
     const score = Math.round((category?.score ?? 0) * 100)
+    const text = `${label} ${score}%`
     context.fillStyle = '#0d2935'
-    context.fillRect(x, Math.max(0, box.originY - 25), 105, 25)
-    context.fillStyle = '#fff'
-    context.fillText(`${label} ${score}%`, x + 6, Math.max(18, box.originY - 7))
+    context.fillRect(x, Math.max(0, box.originY - 25), context.measureText(text).width + 12, 25)
+    context.fillStyle = ignored ? '#c7cfd4' : '#fff'
+    context.fillText(text, x + 6, Math.max(18, box.originY - 7))
   }
   for (const [color, points] of [
     ['#b98cff', handPoints],
@@ -159,6 +178,7 @@ function localAsset(asset: string): string {
 
 function release(resources: Resources): void {
   if (resources.timer !== undefined) window.clearInterval(resources.timer)
+  if (resources.frame !== undefined) cancelAnimationFrame(resources.frame)
   resources.stream?.getTracks().forEach((track) => track.stop())
   if (resources.video) resources.video.srcObject = null
   resources.objects?.close()
@@ -274,7 +294,7 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
       if (isCancelled()) return
       local.stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 10 } }
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }
       })
       if (isCancelled()) return
       local.video = document.createElement('video')
@@ -297,6 +317,7 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
       const containerHold = new ContainerHold()
       const faceCover = new FaceCover()
       let lastTime = -1
+      let overlay = EMPTY_OVERLAY
       local.stream.getVideoTracks().forEach((track) => {
         track.addEventListener('ended', () => {
           if (current !== generation.current) return
@@ -312,7 +333,7 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
           const aspect = video.videoWidth / video.videoHeight
           const containers = objects.detectForVideo(video, now).detections
           const boxes: Box[] = containers.flatMap((item) =>
-            item.boundingBox
+            item.boundingBox && countsAsContainer(item.categories[0]?.score, false)
               ? [
                   {
                     x: item.boundingBox.originX / video.videoWidth,
@@ -386,6 +407,7 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
                 zoomed: true,
                 boundingBox: { ...box, originX, originY, width: boxWidth, height: boxHeight }
               })
+              if (!countsAsContainer(item.categories[0]?.score, true)) continue
               zoomBoxes.push({
                 x: originX / video.videoWidth,
                 y: originY / video.videoHeight,
@@ -444,15 +466,13 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
                 ? previous
                 : next
             )
-            drawPreview(
-              preview.current,
-              video,
-              faceBox,
-              [...containers, ...zoomed],
+            overlay = {
+              face: faceBox,
+              objects: [...containers, ...zoomed],
               handPoints,
-              meshMouth ?? head?.mouth ?? null,
+              mouth: meshMouth ?? head?.mouth ?? null,
               zoomRegions
-            )
+            }
           }
           // 감지 결과만 넘기고, 저장·실패 안내는 기록 쪽에서 맡는다. 영상 정보는 넘기지 않는다.
           if (sip.fired) {
@@ -464,6 +484,12 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
           setMessage('카메라를 분석하지 못했어요. 다시 켜 주세요.')
         }
       }, 250)
+      // 분석은 0.25초마다 하고, 영상은 화면 갱신마다 그려 부드럽게 보이게 한다. 창이 가려지면 브라우저가 그리기를 멈춘다.
+      const paint = (): void => {
+        if (preview.current && video.readyState >= 2) drawPreview(preview.current, video, overlay)
+        local.frame = requestAnimationFrame(paint)
+      }
+      local.frame = requestAnimationFrame(paint)
       resources.current = local
       active.current = true
       starting.current = false

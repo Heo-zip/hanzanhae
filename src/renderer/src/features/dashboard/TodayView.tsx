@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { STAGE_POINTS } from '../../../../shared/appState'
 import type { AppState, WaterStatistics, DrinkActionInput } from '../../../../shared/appState'
 import { useRecordCup } from '../water/useRecordCup'
 import { useCancelWater } from '../water/useCancelWater'
@@ -168,6 +169,18 @@ export default function Today({
   const percent = Math.min(100, Math.round((todayCount / goalCount) * 100))
   const stageIndex = plantIndex(state.plantStage)
   const stage = stages[stageIndex]
+  const next = stages[stageIndex + 1]
+  // 100%는 다음 단계로 바뀔 때만 보이도록 99%에서 멈춘다.
+  const growPercent = next
+    ? Math.min(
+        99,
+        Math.floor(
+          ((state.growthPoints - STAGE_POINTS[stage.id]) /
+            (STAGE_POINTS[next.id] - STAGE_POINTS[stage.id])) *
+            100
+        )
+      )
+    : 100
 
   return (
     <section className="view on" aria-label="오늘">
@@ -208,17 +221,22 @@ export default function Today({
                   : `목표까지 ${format(goalCount - todayCount)}회 남았어요.`}
               </p>
               <div className="grow">
-                <div className="steps" aria-hidden="true">
-                  {stages.map((item, index) => (
-                    <i key={item.id} className={index <= stageIndex ? 'on' : undefined} />
-                  ))}
+                <div className="grow-head">
+                  <span>
+                    {stage.name} {next ? `→ ${next.name}` : '· 활짝 피었어요'}
+                  </span>
+                  {next && <b>{growPercent}%</b>}
                 </div>
-                <span>
-                  {stage.name} ·{' '}
-                  {stageIndex === stages.length - 1
-                    ? '활짝 피었어요'
-                    : `${stages[stageIndex + 1].name}으로 자라고 있어요`}
-                </span>
+                <div
+                  className="grow-bar"
+                  role="progressbar"
+                  aria-label={next ? `${next.name}까지 자란 정도` : '성장 완료'}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={growPercent}
+                >
+                  <i style={{ width: `${growPercent}%` }} />
+                </div>
               </div>
             </div>
             <div className="pot">

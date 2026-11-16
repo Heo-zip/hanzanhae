@@ -18,6 +18,7 @@ import type {
   DrinkRecord
 } from '../../shared/appState'
 import { validReminderSettings } from '../reminders/policy'
+import { STAGE_POINTS } from '../../shared/appState'
 
 export class AlreadyConfiguredError extends Error {}
 export class InvalidSetupError extends Error {}
@@ -37,6 +38,8 @@ const DRINK_GAIN = 6
 const CUP_GAIN = 15
 const CUP_GAIN_WITHOUT_CAMERA = 30
 const BUTTON_GAIN_COOLDOWN_MS = 5 * 60_000
+// 마신 횟수 1회의 성장점. 생기를 올린 기록만 성장에 넣어 버튼 연타로 자라지 않게 한다.
+const DRINK_GROWTH = 250
 // 앱은 1분마다 생기를 저장한다. 그보다 긴 공백은 잠자기·강제 종료로 보고 자리 비움 속도로 계산한다.
 const ACTIVE_GAP_MS = 3 * 60_000
 // 정원의 카메라 감지 되돌리기 버튼은 8초 보인다. 처리 지연을 감안해 15초까지 받는다.
@@ -297,20 +300,24 @@ export class AppDatabase {
     const growthPoints = Number(
       this.prepare(
         `
-      SELECT COALESCE(SUM(g.points), 0) AS total
-      FROM growth_events g JOIN water_records w ON w.id = g.water_record_id
-      WHERE w.cancelled_at IS NULL
+      SELECT
+        (SELECT COALESCE(SUM(g.points), 0)
+         FROM growth_events g JOIN water_records w ON w.id = g.water_record_id
+         WHERE w.cancelled_at IS NULL)
+        + ? * (SELECT COUNT(*)
+         FROM drink_actions d JOIN vitality_gains v ON v.kind = 'drink' AND v.record_id = d.id
+         WHERE d.cancelled_at IS NULL) AS total
     `
-      ).get()?.total
+      ).get(DRINK_GROWTH)?.total
     )
     if (!Number.isSafeInteger(growthPoints) || growthPoints < 0)
       throw new Error('유효하지 않은 성장량')
     const plantStage =
-      growthPoints >= 14000
+      growthPoints >= STAGE_POINTS.flower
         ? 'flower'
-        : growthPoints >= 7000
+        : growthPoints >= STAGE_POINTS.leafy
           ? 'leafy'
-          : growthPoints >= 3000
+          : growthPoints >= STAGE_POINTS.young
             ? 'young'
             : 'seedling'
     return { plantStage, plantVitality: Math.round(vitality), growthPoints }

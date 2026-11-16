@@ -22,7 +22,8 @@ const {
   FaceCover,
   handZoomRegions,
   mouthShape,
-  MouthShapeMeter
+  MouthShapeMeter,
+  countsAsContainer
 } = module.exports
 
 /** 평소 자세를 5프레임 보여 기준 각도를 만든다. */
@@ -388,4 +389,13 @@ test('빨대: 입을 잠깐만 오므리거나 용기가 없으면 세지 않는
   assert.equal(run([0.2, 0.3, 0.3, 0.3, 0.2], true), false)
   assert.equal(run([0.6, 0.6, 0.6, 0.6, 0.6], false), false)
   assert.equal(run([0.6, 0.6, 0.6, 0.6, 0.6], true), true)
+})
+
+test('확대 검출은 입에 댄 빈손 수준의 낮은 컵 점수를 용기로 쓰지 않는다', () => {
+  assert.equal(countsAsContainer(0.3, true), false)
+  assert.equal(countsAsContainer(0.49, true), false)
+  assert.equal(countsAsContainer(0.5, true), true)
+  assert.equal(countsAsContainer(0.25, false), false)
+  assert.equal(countsAsContainer(0.3, false), true)
+  assert.equal(countsAsContainer(undefined, false), false)
 })

@@ -1,4 +1,11 @@
 export type PlantStage = 'seedling' | 'young' | 'leafy' | 'flower'
+/** 각 성장 단계가 시작되는 누적 성장점. 텀블러 1ml당 1점, 마신 횟수 1회당 250점. */
+export const STAGE_POINTS: Record<PlantStage, number> = {
+  seedling: 0,
+  young: 3000,
+  leafy: 7000,
+  flower: 14000
+}
 export type PlantStatus = { plantStage: PlantStage; plantVitality: number; growthPoints: number }
 
 export type AppState =
