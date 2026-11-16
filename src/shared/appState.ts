@@ -90,7 +90,7 @@ export type DailyStatistics = {
 }
 export type WaterStatistics = {
   days: DailyStatistics[]
-  averageMl: number | null
+  averageCount: number | null
   achievedDays: number
   trackedDays: number
   bestDay: DailyStatistics | null
@@ -99,6 +99,9 @@ export type WaterStatistics = {
 export type StatisticsResult =
   | { ok: true; statistics: WaterStatistics }
   | { ok: false; code: 'VALIDATION_ERROR' | 'STORAGE_ERROR' }
+/** saved가 false면 사용자가 저장 창을 닫은 것이다. */
+export type ExportRecordsResult =
+  { ok: true; saved: boolean } | { ok: false; code: 'VALIDATION_ERROR' | 'STORAGE_ERROR' }
 
 export type GardenPlacement = 'dock' | 'floor' | 'custom'
 export type GardenPreset = Exclude<GardenPlacement, 'custom'>

@@ -1165,7 +1165,8 @@ test('통계는 한국 날짜마다 마지막 목표와 취소·조정된 총량
       drinkCount: 2,
       achieved: true
     })
-    assert.equal(stats.averageMl, 160)
+    assert.equal(stats.averageCount, 1.5)
+    assert.equal(stats.bestDay.day, '2026-11-11')
     assert.equal(stats.achievedDays, 1)
     assert.equal(stats.trackedDays, 2)
     assert.equal(stats.streak, 1)
@@ -1200,7 +1201,7 @@ test('통계는 한국 날짜마다 마지막 목표와 취소·조정된 총량
       achieved: false
     })
     assert.equal(stats.trackedDays, 2)
-    assert.equal(stats.averageMl, 110)
+    assert.equal(stats.averageCount, 1.5)
     db.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -1234,7 +1235,7 @@ test('연속 달성은 7일을 넘어 이어지고 오늘 진행 중에는 어�
     assert.equal(stats.streak, 10)
     assert.equal(stats.achievedDays, 6)
     assert.equal(stats.trackedDays, 7)
-    assert.equal(stats.averageMl, 86)
+    assert.equal(stats.averageCount, 0.9)
     assert.equal(stats.bestDay.day, '2026-11-10')
     state = db.readState()
     state = db.recordCup({ requestId: 'today', expectedGoalId: state.goalId, day: state.day }).state
@@ -1297,7 +1298,7 @@ test('목표 없는 날은 통계 분모에서 제외하고 지난 연속 달성
     let stats = db.readStatistics()
     assert.equal(stats.days.at(-2).goalCount, null)
     assert.equal(stats.trackedDays, 2)
-    assert.equal(stats.averageMl, 50)
+    assert.equal(stats.averageCount, 0.5)
     assert.equal(stats.streak, 0)
     state = db.recordCup({ requestId: 'today', expectedGoalId: state.goalId, day: state.day }).state
     state = db.recordDrinkAction({
@@ -1670,6 +1671,44 @@ test('더 최신 앱의 데이터베이스는 이전 버전에서 변경하지 �
     assert.equal(unchanged.prepare('PRAGMA user_version').get().user_version, 11)
     assert.equal(unchanged.prepare('SELECT target_ml FROM goal_sessions').get().target_ml, 250)
     unchanged.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('기록 내보내기는 취소하지 않은 기록만 한국 시각으로 내고 사본은 같은 상태를 연다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-export-'))
+  let now = new Date('2026-11-11T00:05:00Z')
+  try {
+    const db = new AppDatabase(join(dir, 'test.sqlite'), () => now)
+    let state = db.completeSetup({ requestId: 'setup', goalCount: 4, cupMl: 500 })
+    const base = { expectedGoalId: state.goalId, day: state.day }
+    state = db.recordDrinkAction({ ...base, kind: 'add', requestId: 'button' }).state
+    now = new Date('2026-11-11T00:10:00Z')
+    state = db.recordDrinkAction({ ...base, kind: 'add', requestId: 'camera', source: 'camera' })
+      .state
+    state = db.recordCup({ ...base, requestId: 'cup' }).state
+    state = db.recordCup({ ...base, requestId: 'cancelled' }).state
+    state = db.cancelWater({
+      ...base,
+      requestId: 'cancel',
+      kind: 'latest',
+      recordId: state.todayRecords[0].id
+    }).state
+    assert.equal(
+      db.exportCsv(),
+      '﻿날짜,시각,종류,양(ml),기록 방법\n' +
+        '2026-11-11,09:05,마신 횟수,,버튼\n' +
+        '2026-11-11,09:10,마신 횟수,,카메라\n' +
+        '2026-11-11,09:10,텀블러 비움,500,\n'
+    )
+    const copy = join(dir, 'copy.sqlite')
+    db.backupTo(copy)
+    const restored = new AppDatabase(copy, () => now)
+    assert.equal(restored.readState().todayCount, 2)
+    assert.equal(restored.readState().todayMl, 500)
+    restored.close()
+    db.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

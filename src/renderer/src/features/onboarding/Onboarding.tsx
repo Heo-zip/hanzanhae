@@ -1,10 +1,7 @@
 import { useRef, useState } from 'react'
 import { isMlInput } from '../water/mlInput'
 import wordmark from '../../assets/icons/wordmark.webp'
-import stage1 from '../../assets/stage1.webp'
-import stage2 from '../../assets/stage2.webp'
-import stage3 from '../../assets/stage3.webp'
-import stage4 from '../../assets/stage4.webp'
+import { plants } from '../plant/plantVisual'
 import can from '../../assets/icons/watering-can.webp'
 import statLeft from '../../assets/icons/stat-left.webp'
 import statCups from '../../assets/icons/stat-cups.webp'
@@ -178,7 +175,7 @@ function Onboarding({ onComplete }: { onComplete: () => Promise<void> }): React.
             {step === 3 && (
               <>
                 <div className="ob-done-art">
-                  <img className="pot" src={stage1} alt="새싹 화분" />
+                  <img className="pot" src={plants[0].image} alt="새싹 화분" />
                   <img className="can" src={can} alt="" />
                 </div>
                 <h1>준비됐어요!</h1>
@@ -236,8 +233,8 @@ function Onboarding({ onComplete }: { onComplete: () => Promise<void> }): React.
           </div>
         </div>
         <div className="ob-garden" aria-hidden="true">
-          {[stage1, stage2, stage3, stage4].map((src, index) => (
-            <img key={src} className={`p${index + 1}`} src={src} alt="" />
+          {plants.map((plant, index) => (
+            <img key={plant.id} className={`p${index + 1}`} src={plant.image} alt="" />
           ))}
         </div>
       </section>

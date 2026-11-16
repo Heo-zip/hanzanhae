@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, powerMonitor } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, powerMonitor } from 'electron'
+import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
@@ -11,7 +12,8 @@ import type {
   CancelWaterInput,
   CancelWaterResult,
   StatisticsResult,
-  DrinkActionInput
+  DrinkActionInput,
+  ExportRecordsResult
 } from '../../shared/appState'
 import {
   AlreadyConfiguredError,
@@ -30,9 +32,23 @@ export function setCameraActive(active: boolean): void {
   cameraActive = active
 }
 
+const databasePath = (): string => join(app.getPath('userData'), 'hanzanhae.sqlite')
+
 export function getDatabase(): AppDatabase {
-  if (!database) database = new AppDatabase(join(app.getPath('userData'), 'hanzanhae.sqlite'))
+  if (!database) database = new AppDatabase(databasePath())
   return database
+}
+
+// 사본을 먼저 만들고, 사본이 실패하면 아무것도 지우지 않는다.
+function resetDatabase(): void {
+  const directory = join(app.getPath('userData'), 'backups')
+  mkdirSync(directory, { recursive: true, mode: 0o700 })
+  getDatabase().backupTo(join(directory, `hanzanhae-before-reset-${Date.now()}.sqlite`))
+  database?.close()
+  database = undefined
+  for (const suffix of ['', '-wal', '-shm', '-journal'])
+    rmSync(databasePath() + suffix, { force: true })
+  getDatabase()
 }
 
 export function trusted(event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): boolean {
@@ -199,6 +215,36 @@ export function initializeStorageIpc(
       if (error instanceof StaleStateError) return { ok: false, code: 'STALE_STATE' }
       if (error instanceof NoRecordsError) return { ok: false, code: 'NO_RECORDS' }
       if (error instanceof TotalBelowZeroError) return { ok: false, code: 'TOTAL_BELOW_ZERO' }
+      return { ok: false, code: 'STORAGE_ERROR' }
+    }
+  })
+  ipcMain.handle('app:export-records', async (event): Promise<ExportRecordsResult> => {
+    const dashboard = getDashboard()
+    if (!trusted(event) || !dashboard || event.sender !== dashboard.webContents)
+      return { ok: false, code: 'VALIDATION_ERROR' }
+    try {
+      const csv = getDatabase().exportCsv()
+      const day = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(new Date())
+      const { canceled, filePath } = await dialog.showSaveDialog(dashboard, {
+        defaultPath: join(app.getPath('documents'), `한잔해-기록-${day}.csv`),
+        filters: [{ name: 'CSV', extensions: ['csv'] }]
+      })
+      if (canceled || !filePath) return { ok: true, saved: false }
+      writeFileSync(filePath, csv)
+      return { ok: true, saved: true }
+    } catch {
+      return { ok: false, code: 'STORAGE_ERROR' }
+    }
+  })
+  ipcMain.handle('app:reset-data', (event): AppResult => {
+    if (!trusted(event) || event.sender !== getDashboard()?.webContents)
+      return { ok: false, code: 'VALIDATION_ERROR' }
+    try {
+      resetDatabase()
+      setCameraActive(false)
+      broadcast('app:state-changed', 'garden:settings-changed')
+      return { ok: true, state: getDatabase().readState() }
+    } catch {
       return { ok: false, code: 'STORAGE_ERROR' }
     }
   })

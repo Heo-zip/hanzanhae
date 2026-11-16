@@ -4,15 +4,15 @@
   place-items: center;
   padding: 32px;
   box-sizing: border-box;
-  background: #f7faf6;
-  color: #24312a;
+  background: var(--page);
+  color: var(--text);
   font-family: 'Paperlogy', sans-serif;
 }
 .setup-card {
   width: min(100%, 440px);
   box-sizing: border-box;
-  background: white;
-  border: 1px solid #e7eee8;
+  background: var(--card);
+  border: 1px solid var(--line);
   border-radius: 24px;
   padding: 36px 42px;
   box-shadow: 0 12px 48px #1c46200d;
@@ -34,7 +34,7 @@
   margin: 8px 0;
 }
 .setup-card p {
-  color: #68796d;
+  color: var(--text-sub);
   line-height: 1.5;
 }
 .setup-card form {
@@ -47,13 +47,13 @@
   margin-top: 8px;
 }
 .setup-card label span {
-  color: #85938a;
+  color: var(--text-muted);
   font-size: 13px;
 }
 .setup-card input {
   box-sizing: border-box;
   width: 100%;
-  border: 1px solid #dbe5dc;
+  border: 1px solid var(--line);
   border-radius: 12px;
   padding: 13px;
   font: inherit;
@@ -82,7 +82,7 @@
   font-size: 14px;
 }
 .setup-card small {
-  color: #85938a;
+  color: var(--text-muted);
 }
 /* ── 첫 실행: 목표와 한 잔 용량을 묻는 설정 화면 (창 전체를 덮는다) ── */
 .onboard {

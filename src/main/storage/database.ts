@@ -620,11 +620,14 @@ export class AppDatabase {
     }
     const days = Array.from({ length: 7 }, (_, index) => daily(offset(currentDay, index - 6)))
     const tracked = days.filter((day) => day.goalMl !== null || day.goalCount !== null)
-    const averageMl = tracked.length
-      ? Math.round(tracked.reduce((sum, day) => sum + day.totalMl / tracked.length, 0))
+    // 목표가 횟수라 요약도 횟수로 낸다. 평균은 소수 첫째 자리까지 보여준다.
+    const averageCount = tracked.length
+      ? Math.round((tracked.reduce((sum, day) => sum + day.drinkCount, 0) / tracked.length) * 10) /
+        10
       : null
     const bestDay = days.reduce<DailyStatistics | null>(
-      (best, day) => (day.totalMl > 0 && (!best || day.totalMl >= best.totalMl) ? day : best),
+      (best, day) =>
+        day.drinkCount > 0 && (!best || day.drinkCount >= best.drinkCount) ? day : best,
       null
     )
     let cursor = daily(currentDay).achieved ? currentDay : offset(currentDay, -1)
@@ -635,7 +638,7 @@ export class AppDatabase {
     }
     return {
       days,
-      averageMl,
+      averageCount,
       achievedDays: tracked.filter((day) => day.achieved).length,
       trackedDays: tracked.length,
       bestDay,
@@ -1043,6 +1046,37 @@ export class AppDatabase {
       this.db.exec('ROLLBACK')
       throw error
     }
+  }
+
+  /** 취소하지 않은 마신 횟수·텀블러 기록을 시간순 CSV로 낸다. 엑셀이 한글을 읽도록 BOM을 붙인다. */
+  exportCsv(): string {
+    const time = new Intl.DateTimeFormat('ko-KR', {
+      timeZone: 'Asia/Seoul',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23'
+    })
+    const rows = this.prepare(
+      `SELECT recorded_at, day, 'count' AS kind, NULL AS amount, source FROM drink_actions WHERE cancelled_at IS NULL
+       UNION ALL
+       SELECT recorded_at, day, 'cup', amount_ml, NULL FROM water_records WHERE cancelled_at IS NULL
+       ORDER BY recorded_at`
+    ).all()
+    const lines = rows.map((row) =>
+      [
+        String(row.day),
+        time.format(new Date(String(row.recorded_at))),
+        row.kind === 'count' ? '마신 횟수' : '텀블러 비움',
+        row.amount ?? '',
+        row.kind === 'count' ? (row.source === 'camera' ? '카메라' : '버튼') : ''
+      ].join(',')
+    )
+    return '\uFEFF' + ['날짜,시각,종류,양(ml),기록 방법', ...lines].join('\n') + '\n'
+  }
+
+  /** 지금 데이터를 그대로 복사한다. 초기화 전에 되돌릴 수 있는 사본을 남길 때 쓴다. */
+  backupTo(path: string): void {
+    this.prepare('VACUUM INTO ?').run(path)
   }
 
   close(): void {

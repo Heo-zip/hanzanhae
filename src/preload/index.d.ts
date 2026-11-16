@@ -13,7 +13,8 @@ import type {
   ReminderSettingsResult,
   ReminderTestResult,
   DrinkActionInput,
-  LoginItemResult
+  LoginItemResult,
+  ExportRecordsResult
 } from '../shared/appState'
 
 declare global {
@@ -44,6 +45,8 @@ declare global {
       recordCup: (input: RecordCupInput) => Promise<RecordCupResult>
       recordDrinkAction: (input: DrinkActionInput) => Promise<AppResult>
       cancelWater: (input: CancelWaterInput) => Promise<CancelWaterResult>
+      exportRecords: () => Promise<ExportRecordsResult>
+      resetData: () => Promise<AppResult>
       onWaterRecorded: (callback: () => void) => () => void
       onDrinkDetected: (callback: (recordId: number) => void) => () => void
       onStateChanged: (callback: () => void) => () => void
