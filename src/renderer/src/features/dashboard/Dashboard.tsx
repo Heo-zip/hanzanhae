@@ -28,7 +28,7 @@ import statCups from '../../assets/icons/stat-cups.webp'
 import statStreak from '../../assets/icons/stat-streak.webp'
 import statVitality from '../../assets/icons/stat-vit.webp'
 import drop from '../../assets/icons/drop.webp'
-import { plantImage, plantIndex, plants as stages } from '../plant/plantVisual'
+import { plantFrame, plantIndex, plants as stages } from '../plant/plantVisual'
 import './dashboard.css'
 
 // 대시보드에서 선택할 수 있는 화면을 세 가지로 제한한다.
@@ -107,7 +107,7 @@ function Today({
   statisticsError: boolean
   refreshStatistics: () => void
 }): React.JSX.Element {
-  const { goalCount, todayCount, cupMl, todayMl, todayRecords } = state
+  const { goalCount, todayCount, cupMl, todayMl } = state
   const { record, busy, error } = useRecordCup(state, refresh)
   const {
     cancel,
@@ -182,6 +182,11 @@ function Today({
   const [clearSnapshot, setClearSnapshot] = useState<ClearTodaySnapshot | null>(null)
   const [modalAttempted, setModalAttempted] = useState(false)
   const currentRecords = state.todayRecords.filter((item) => item.goalId === state.goalId)
+  // 오늘 기록 목록은 마신 횟수와 텀블러 기록을 시간순(최신 먼저)으로 함께 보여 준다.
+  const timeline = [
+    ...state.todayDrinks.map((record) => ({ kind: 'drink' as const, record })),
+    ...state.todayRecords.map((record) => ({ kind: 'cup' as const, record }))
+  ].sort((a, b) => b.record.recordedAt.localeCompare(a.record.recordedAt))
   const latest = currentRecords[0]
 
   async function cancelLatest(): Promise<void> {
@@ -199,13 +204,15 @@ function Today({
   }
 
   function openCancelToday(): void {
-    if (currentRecords.length === 0 || retryable) return
+    if ((currentRecords.length === 0 && state.todayCount === 0) || retryable) return
     setCancelNotice('')
     setModalAttempted(false)
     setClearSnapshot({
       goalId: state.goalId,
       goalCount: state.goalCount,
       day: state.day,
+      drinkCount: state.todayCount,
+      latestDrinkId: state.latestDrinkId,
       todayMl: state.todayMl,
       adjustmentMl:
         state.todayMl - state.todayRecords.reduce((sum, item) => sum + item.amountMl, 0),
@@ -220,16 +227,18 @@ function Today({
       kind: 'today',
       expectedGoalId: clearSnapshot.goalId,
       day: clearSnapshot.day,
-      expectedRecordIds: clearSnapshot.records.map((item) => item.id)
+      expectedRecordIds: clearSnapshot.records.map((item) => item.id),
+      expectedDrinkCount: clearSnapshot.drinkCount,
+      expectedLatestDrinkId: clearSnapshot.latestDrinkId
     })
-    if (success) setCancelNotice('오늘 현재 목표 기록을 취소했어요.')
+    if (success) setCancelNotice('오늘 마신 횟수와 텀블러 기록을 취소했어요.')
     return success
   }
 
   async function retryCancelToday(): Promise<boolean> {
     setModalAttempted(true)
     const success = await retry()
-    if (success) setCancelNotice('오늘 현재 목표 기록을 취소했어요.')
+    if (success) setCancelNotice('오늘 마신 횟수와 텀블러 기록을 취소했어요.')
     return success
   }
   const today = dayFormat.format(new Date())
@@ -293,7 +302,8 @@ function Today({
               <img
                 key={waterPulse}
                 className={watered ? 'wobble' : undefined}
-                src={plantImage(state.plantStage, state.plantVitality, watered)}
+                src={plantFrame(state.plantStage, state.plantVitality).image}
+                style={{ filter: plantFrame(state.plantStage, state.plantVitality).filter }}
                 alt={`${stage.name} 화분`}
               />
             </div>
@@ -401,7 +411,12 @@ function Today({
               오늘 기록{' '}
               <button
                 className="plain-action"
-                disabled={busy || cancelBusy || retryable || currentRecords.length === 0}
+                disabled={
+                  busy ||
+                  cancelBusy ||
+                  retryable ||
+                  (currentRecords.length === 0 && todayCount === 0)
+                }
                 onClick={openCancelToday}
               >
                 전체 취소
@@ -426,25 +441,49 @@ function Today({
                 )}
               </p>
             )}
-            {todayRecords.length === 0 && <p>아직 오늘의 물 기록이 없어요.</p>}
+            {timeline.length === 0 && <p>아직 오늘의 물 기록이 없어요.</p>}
             <ul className="records">
-              {todayRecords.map((record) => (
-                <li key={record.id}>
-                  <span className="dot">
-                    <img src={drop} alt="" />
-                  </span>
-                  <span className="num">{format(record.amountMl)}ml</span>
-                  <span className="t num">{timeFormat.format(new Date(record.recordedAt))}</span>
-                  {record.id === latest?.id && (
-                    <button
-                      disabled={busy || cancelBusy || retryable}
-                      onClick={() => void cancelLatest()}
-                    >
-                      최근 텀블러 취소
-                    </button>
-                  )}
-                </li>
-              ))}
+              {timeline.map((item) =>
+                item.kind === 'cup' ? (
+                  <li key={`cup-${item.record.id}`}>
+                    <span className="dot">
+                      <img src={drop} alt="" />
+                    </span>
+                    <span className="num">{format(item.record.amountMl)}ml</span>
+                    <span className="t num">
+                      {timeFormat.format(new Date(item.record.recordedAt))}
+                    </span>
+                    {item.record.id === latest?.id && (
+                      <button
+                        disabled={busy || cancelBusy || retryable}
+                        onClick={() => void cancelLatest()}
+                      >
+                        최근 텀블러 취소
+                      </button>
+                    )}
+                  </li>
+                ) : (
+                  <li key={`drink-${item.record.id}`}>
+                    <span className="dot">
+                      <img src={statCups} alt="" />
+                    </span>
+                    <span>
+                      물 <span className="num">1</span>회
+                    </span>
+                    <span className="t num">
+                      {timeFormat.format(new Date(item.record.recordedAt))}
+                    </span>
+                    {item.record.id === state.latestDrinkId && (
+                      <button
+                        disabled={drinkBusy || pendingDrinkKind === 'add'}
+                        onClick={() => void changeDrinkCount('undo')}
+                      >
+                        최근 횟수 취소
+                      </button>
+                    )}
+                  </li>
+                )
+              )}
             </ul>
           </div>
         </div>

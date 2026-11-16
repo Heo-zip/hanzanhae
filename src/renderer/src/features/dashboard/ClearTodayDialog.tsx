@@ -7,6 +7,8 @@ export type ClearTodaySnapshot = {
   goalId: number
   goalCount: number
   day: string
+  drinkCount: number
+  latestDrinkId: number | null
   todayMl: number
   adjustmentMl: number
   records: { id: number; amountMl: number }[]
@@ -92,8 +94,9 @@ function ClearTodayDialog({
             </>
           ) : (
             <>
-              지금 목표로 오늘 기록한 물을
-              <br />그 물로 자란 만큼을 함께 되돌려요.
+              오늘 마신 횟수와 지금 목표로 기록한 텀블러를
+              <br />
+              생기와 자란 만큼까지 함께 되돌려요.
             </>
           )}
         </p>
@@ -107,7 +110,11 @@ function ClearTodayDialog({
         )}
         <div className="cf-sum">
           <div>
-            <span>취소할 기록</span>
+            <span>취소할 마신 횟수</span>
+            <b className="num minus">{format(snapshot.drinkCount)}회</b>
+          </div>
+          <div>
+            <span>취소할 텀블러</span>
             <b className="num minus">
               {format(count)}잔 · {format(removed)}ml
             </b>
@@ -122,7 +129,7 @@ function ClearTodayDialog({
         {!blocked && (
           <ul className="cf-keep">
             <li className="cf-keep-h">그대로 남아요</li>
-            <li>하루 목표 {format(snapshot.goalCount)}회와 물 마신 횟수</li>
+            <li>하루 목표 {format(snapshot.goalCount)}회</li>
             <li>다른 목표와 어제까지의 기록, 화분</li>
             {snapshot.adjustmentMl !== 0 && (
               <li>

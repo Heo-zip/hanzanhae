@@ -64,7 +64,8 @@ export function shouldRemind(input: {
 }
 
 export function reminderBody(vitality: number): string {
-  return vitality < 45
+  // 시든 사진(생기 30~49)부터 더 다급한 문구를 쓴다.
+  return vitality < 50
     ? '저 곧 말라비틀어질 것 같아요… 물 한 잔 어때요?'
     : '물 마신 지 꽤 지났어요. 저도 조금 목이 말라요.'
 }

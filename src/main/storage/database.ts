@@ -14,7 +14,8 @@ import type {
   DailyStatistics,
   GardenSettings,
   ReminderSettings,
-  DrinkActionInput
+  DrinkActionInput,
+  DrinkRecord
 } from '../../shared/appState'
 import { validReminderSettings } from '../reminders/policy'
 
@@ -24,7 +25,22 @@ export class StaleStateError extends Error {}
 export class NoRecordsError extends Error {}
 export class TotalBelowZeroError extends Error {}
 
-const SCHEMA_VERSION = 9
+const SCHEMA_VERSION = 10
+
+// 생기 기준. 수치는 docs/product.md의 생기 표와 함께 바꾼다.
+const VITALITY_START = 60
+const VITALITY_MIN = 20
+const VITALITY_MAX = 100
+const ACTIVE_DROP_PER_HOUR = 10
+const AWAY_DROP_PER_HOUR = 2
+const DRINK_GAIN = 6
+const CUP_GAIN = 15
+const CUP_GAIN_WITHOUT_CAMERA = 30
+const BUTTON_GAIN_COOLDOWN_MS = 5 * 60_000
+// 앱은 1분마다 생기를 저장한다. 그보다 긴 공백은 잠자기·강제 종료로 보고 자리 비움 속도로 계산한다.
+const ACTIVE_GAP_MS = 3 * 60_000
+// 정원의 카메라 감지 되돌리기 버튼은 8초 보인다. 처리 지연을 감안해 15초까지 받는다.
+const CAMERA_UNDO_MS = 15_000
 
 // 앱의 하루 기준인 한국 날짜를 YYYY-MM-DD로 만든다.
 const seoulDay = new Intl.DateTimeFormat('en-CA', {
@@ -189,22 +205,76 @@ export class AppDatabase {
           COMMIT;
         `)
       }
-      // 마지막 저장 이후는 앱이 꺼져 있던 시간으로 보수적으로 계산한다.
-      this.settleVitality('offline')
+      if (version < 10) {
+        // 기록마다 실제로 오른 생기를 남겨 취소할 때 그만큼 되돌린다. 이전 기록은 소급하지 않는다.
+        this.db.exec(`
+          BEGIN IMMEDIATE;
+          ALTER TABLE drink_actions ADD COLUMN source TEXT NOT NULL DEFAULT 'button' CHECK(source IN ('button', 'camera'));
+          CREATE TABLE vitality_gains (
+            kind TEXT NOT NULL CHECK(kind IN ('drink', 'cup')),
+            record_id INTEGER NOT NULL,
+            gain REAL NOT NULL CHECK(gain >= 0),
+            PRIMARY KEY (kind, record_id)
+          );
+          PRAGMA user_version = 10;
+          COMMIT;
+        `)
+      }
+      // 마지막 저장 이후는 앱이 꺼져 있던 시간이므로 자리 비움 속도로 계산한다.
+      this.settleVitality('away')
     } catch (error) {
       this.db.close()
       throw error
     }
   }
 
-  private vitalityAt(value: number, updatedAt: string, mode: 'online' | 'offline'): number {
+  // 사용 중이면 'active', 화면 잠금·잠자기면 'away'. 앱 본체가 setPresence로 알려 준다.
+  private presence: 'active' | 'away' = 'active'
+
+  private vitalityAt(
+    value: number,
+    updatedAt: string,
+    mode: 'active' | 'away' = this.presence
+  ): number {
     const elapsed = Math.max(0, this.now().getTime() - Date.parse(updatedAt))
     if (!Number.isFinite(elapsed) || !Number.isFinite(value)) throw new Error('유효하지 않은 생기')
-    const hourly = mode === 'online' ? 2 : 0.25
-    return Math.max(20, Math.min(100, value - (elapsed / 3_600_000) * hourly))
+    const active = mode === 'active' ? Math.min(elapsed, ACTIVE_GAP_MS) : 0
+    const drop =
+      (active * ACTIVE_DROP_PER_HOUR + (elapsed - active) * AWAY_DROP_PER_HOUR) / 3_600_000
+    return Math.max(VITALITY_MIN, Math.min(VITALITY_MAX, value - drop))
   }
 
-  private settleVitality(mode: 'online' | 'offline'): void {
+  /** 지금까지는 이전 상태 속도로 계산해 저장하고, 이후부터 새 상태 속도를 쓴다. */
+  setPresence(presence: 'active' | 'away'): void {
+    if (presence === this.presence) return
+    this.settleVitality()
+    this.presence = presence
+  }
+
+  // 생기를 지금 시각까지 계산한 뒤 올리고, 실제로 오른 양을 기록에 남긴다.
+  private grantVitality(kind: 'drink' | 'cup', recordId: number | bigint, amount: number): void {
+    this.settleVitality()
+    const value = Number(this.prepare('SELECT value FROM plant_vitality WHERE id = 1').get()?.value)
+    const gain = Math.max(0, Math.min(amount, VITALITY_MAX - value))
+    this.prepare('UPDATE plant_vitality SET value = ? WHERE id = 1').run(value + gain)
+    this.prepare('INSERT INTO vitality_gains VALUES (?, ?, ?)').run(kind, recordId, gain)
+  }
+
+  // 취소한 기록이 올렸던 생기만큼 되돌린다. 최저값 아래로는 내려가지 않는다.
+  private revokeVitality(kind: 'drink' | 'cup', recordId: number): void {
+    const row = this.prepare(
+      'SELECT gain FROM vitality_gains WHERE kind = ? AND record_id = ?'
+    ).get(kind, recordId)
+    if (!row) return
+    this.settleVitality()
+    this.prepare('UPDATE plant_vitality SET value = MAX(?, value - ?) WHERE id = 1').run(
+      VITALITY_MIN,
+      Number(row.gain)
+    )
+    this.prepare('DELETE FROM vitality_gains WHERE kind = ? AND record_id = ?').run(kind, recordId)
+  }
+
+  private settleVitality(mode: 'active' | 'away' = this.presence): void {
     const row = this.prepare('SELECT value, updated_at FROM plant_vitality WHERE id = 1').get()
     if (!row) return
     const value = this.vitalityAt(Number(row.value), String(row.updated_at), mode)
@@ -217,13 +287,13 @@ export class AppDatabase {
   }
 
   checkpointPlant(): void {
-    this.settleVitality('online')
+    this.settleVitality()
   }
 
   private readPlant(): PlantStatus {
     const row = this.prepare('SELECT value, updated_at FROM plant_vitality WHERE id = 1').get()
     if (!row) throw new Error('식물 생기 데이터가 없어요')
-    const vitality = this.vitalityAt(Number(row.value), String(row.updated_at), 'online')
+    const vitality = this.vitalityAt(Number(row.value), String(row.updated_at))
     const growthPoints = Number(
       this.prepare(
         `
@@ -310,11 +380,17 @@ export class AppDatabase {
     const todayMl = adjustment + todayRecords.reduce((total, record) => total + record.amountMl, 0)
     if (!Number.isSafeInteger(todayMl) || todayMl < 0) throw new Error('유효하지 않은 오늘 총량')
     const plantStatus = this.readPlant()
-    const actions = this.prepare(
-      'SELECT id FROM drink_actions WHERE day = ? AND cancelled_at IS NULL ORDER BY recorded_at DESC, id DESC'
-    ).all(day)
-    const todayCount = actions.length
-    const latestDrinkId = actions.length ? Number(actions[0].id) : null
+    const todayDrinks: DrinkRecord[] = this.prepare(
+      'SELECT id, recorded_at, source FROM drink_actions WHERE day = ? AND cancelled_at IS NULL ORDER BY recorded_at DESC, id DESC'
+    )
+      .all(day)
+      .map((row) => ({
+        id: Number(row.id),
+        recordedAt: String(row.recorded_at),
+        source: row.source === 'camera' ? 'camera' : 'button'
+      }))
+    const todayCount = todayDrinks.length
+    const latestDrinkId = todayDrinks.length ? todayDrinks[0].id : null
     if (!goal || goal.target_count === null)
       return {
         status: 'goal-stopped',
@@ -324,6 +400,7 @@ export class AppDatabase {
         day,
         todayCount,
         latestDrinkId,
+        todayDrinks,
         ...plantStatus
       }
     const goalMl = Number(goal.target_ml)
@@ -336,6 +413,7 @@ export class AppDatabase {
       goalCount,
       todayCount,
       latestDrinkId,
+      todayDrinks,
       cupMl,
       todayMl,
       todayRecords,
@@ -590,7 +668,10 @@ export class AppDatabase {
           'INSERT INTO goal_sessions (target_ml, target_count, started_at) VALUES (?, ?, ?)'
         ).run(cupMl, goalCount, this.now().toISOString())
         this.prepare("INSERT INTO plant_state VALUES (1, 'seedling')").run()
-        this.prepare('INSERT INTO plant_vitality VALUES (1, 80, ?)').run(this.now().toISOString())
+        this.prepare('INSERT INTO plant_vitality VALUES (1, ?, ?)').run(
+          VITALITY_START,
+          this.now().toISOString()
+        )
         this.prepare('INSERT INTO mutation_receipts VALUES (?, ?, ?)').run(
           requestId,
           goalCount,
@@ -608,12 +689,13 @@ export class AppDatabase {
             goalCount,
             todayCount: 0,
             latestDrinkId: null,
+            todayDrinks: [],
             cupMl,
             todayMl: 0,
             todayRecords: [],
             day: today(this.now()),
             plantStage: 'seedling',
-            plantVitality: 80,
+            plantVitality: VITALITY_START,
             growthPoints: 0
           }
         : currentState
@@ -625,7 +707,11 @@ export class AppDatabase {
     }
   }
 
-  recordCup(input: RecordCupInput): { state: AppState; created: boolean } {
+  /** cameraActive: 기록하는 순간 카메라 감지가 켜져 있는지. 꺼져 있으면 텀블러가 생기를 더 올린다. */
+  recordCup(
+    input: RecordCupInput,
+    { cameraActive = false }: { cameraActive?: boolean } = {}
+  ): { state: AppState; created: boolean } {
     if (
       !input ||
       typeof input.requestId !== 'string' ||
@@ -666,8 +752,11 @@ export class AppDatabase {
             inserted.lastInsertRowid,
             points
           )
-        this.settleVitality('online')
-        this.prepare('UPDATE plant_vitality SET value = MIN(100, value + 15) WHERE id = 1').run()
+        this.grantVitality(
+          'cup',
+          inserted.lastInsertRowid,
+          cameraActive ? CUP_GAIN : CUP_GAIN_WITHOUT_CAMERA
+        )
         created = true
       }
       const state = this.readState()
@@ -679,7 +768,12 @@ export class AppDatabase {
     }
   }
 
-  recordDrinkAction(input: DrinkActionInput): { state: AppState; created: boolean } {
+  /** recentCameraOnly: 정원에서 되돌릴 때. 방금 카메라가 저장한 기록만 취소할 수 있다. */
+  recordDrinkAction(
+    input: DrinkActionInput,
+    { recentCameraOnly = false }: { recentCameraOnly?: boolean } = {}
+  ): { state: AppState; created: boolean } {
+    const source = input?.source ?? 'button'
     if (
       !input ||
       typeof input.requestId !== 'string' ||
@@ -688,14 +782,17 @@ export class AppDatabase {
       !positive(input.expectedGoalId) ||
       typeof input.day !== 'string' ||
       (input.kind !== 'add' && input.kind !== 'undo') ||
-      (input.kind === 'undo' && !positive(input.recordId ?? 0))
+      (input.kind === 'undo' && !positive(input.recordId ?? 0)) ||
+      (source !== 'button' && source !== 'camera') ||
+      (recentCameraOnly && input.kind !== 'undo')
     )
       throw new InvalidSetupError()
     const payload = JSON.stringify([
       input.kind,
       input.expectedGoalId,
       input.day,
-      input.recordId ?? null
+      input.recordId ?? null,
+      ...(input.kind === 'add' ? [source] : [])
     ])
     this.db.exec('BEGIN IMMEDIATE')
     try {
@@ -715,11 +812,31 @@ export class AppDatabase {
         )
           throw new StaleStateError()
         if (input.kind === 'add') {
-          this.prepare(
-            'INSERT INTO drink_actions (request_id, goal_id, day, recorded_at) VALUES (?, ?, ?, ?)'
-          ).run(input.requestId, state.goalId, state.day, this.now().toISOString())
+          const now = this.now()
+          // 버튼은 마지막으로 생기를 올린 버튼 기록 뒤 5분이 지나야 다시 올린다. 카메라 감지는 제한이 없다.
+          const cooling =
+            source === 'button' &&
+            this.prepare(
+              `SELECT 1 FROM drink_actions d JOIN vitality_gains g ON g.kind = 'drink' AND g.record_id = d.id
+               WHERE d.source = 'button' AND d.cancelled_at IS NULL AND d.recorded_at > ? LIMIT 1`
+            ).get(new Date(now.getTime() - BUTTON_GAIN_COOLDOWN_MS).toISOString())
+          const inserted = this.prepare(
+            'INSERT INTO drink_actions (request_id, goal_id, day, recorded_at, source) VALUES (?, ?, ?, ?, ?)'
+          ).run(input.requestId, state.goalId, state.day, now.toISOString(), source)
+          if (!cooling) this.grantVitality('drink', inserted.lastInsertRowid, DRINK_GAIN)
         } else {
           if (state.latestDrinkId !== input.recordId) throw new StaleStateError()
+          if (recentCameraOnly) {
+            const row = this.prepare(
+              'SELECT source, recorded_at FROM drink_actions WHERE id = ?'
+            ).get(input.recordId!)
+            if (
+              row?.source !== 'camera' ||
+              this.now().getTime() - Date.parse(String(row.recorded_at)) > CAMERA_UNDO_MS
+            )
+              throw new StaleStateError()
+          }
+          this.revokeVitality('drink', input.recordId!)
           const changed = this.prepare(
             'UPDATE drink_actions SET cancelled_at = ? WHERE id = ? AND day = ? AND cancelled_at IS NULL'
           ).run(this.now().toISOString(), input.recordId!, state.day)
@@ -757,7 +874,9 @@ export class AppDatabase {
         : input.kind === 'today'
           ? !Array.isArray(input.expectedRecordIds) ||
             !input.expectedRecordIds.every(positive) ||
-            new Set(input.expectedRecordIds).size !== input.expectedRecordIds.length
+            new Set(input.expectedRecordIds).size !== input.expectedRecordIds.length ||
+            !nonnegative(input.expectedDrinkCount) ||
+            (input.expectedLatestDrinkId !== null && !positive(input.expectedLatestDrinkId))
           : true)
     )
       throw new InvalidSetupError()
@@ -765,7 +884,9 @@ export class AppDatabase {
       input.kind,
       input.expectedGoalId,
       input.day,
-      input.kind === 'latest' ? input.recordId : input.expectedRecordIds
+      input.kind === 'latest'
+        ? input.recordId
+        : [input.expectedRecordIds, input.expectedDrinkCount, input.expectedLatestDrinkId]
     ])
     this.db.exec('BEGIN IMMEDIATE')
     try {
@@ -788,13 +909,21 @@ export class AppDatabase {
         )
           throw new StaleStateError()
         const current = state.todayRecords.filter((record) => record.goalId === state.goalId)
-        if (current.length === 0) {
+        if (
+          input.kind === 'today' &&
+          (state.todayCount !== input.expectedDrinkCount ||
+            state.latestDrinkId !== input.expectedLatestDrinkId)
+        )
+          throw new StaleStateError()
+        const drinkCount = input.kind === 'today' ? state.todayCount : 0
+        if (current.length === 0 && drinkCount === 0) {
           if (input.kind === 'today' && input.expectedRecordIds.length === 0)
             throw new NoRecordsError()
           throw new StaleStateError()
         }
         let selected: WaterRecord[]
         if (input.kind === 'latest') {
+          if (current.length === 0) throw new StaleStateError()
           if (current[0].id !== input.recordId) throw new StaleStateError()
           selected = [current[0]]
         } else {
@@ -810,8 +939,24 @@ export class AppDatabase {
         const update = this.prepare(
           'UPDATE water_records SET cancelled_at = ? WHERE id = ? AND cancelled_at IS NULL'
         )
-        for (const record of selected) update.run(now.toISOString(), record.id)
-        cancelledCount = selected.length
+        for (const record of selected) {
+          update.run(now.toISOString(), record.id)
+          this.revokeVitality('cup', record.id)
+        }
+        // 전체 취소는 화면에 보이는 오늘 마신 횟수도 함께 취소하고 그 횟수가 올린 생기를 되돌린다.
+        if (input.kind === 'today') {
+          const drinks = this.prepare(
+            'SELECT id FROM drink_actions WHERE day = ? AND cancelled_at IS NULL'
+          ).all(state.day)
+          const cancelDrink = this.prepare(
+            'UPDATE drink_actions SET cancelled_at = ? WHERE id = ? AND cancelled_at IS NULL'
+          )
+          for (const drink of drinks) {
+            cancelDrink.run(now.toISOString(), Number(drink.id))
+            this.revokeVitality('drink', Number(drink.id))
+          }
+        }
+        cancelledCount = selected.length + drinkCount
         this.prepare('INSERT INTO cancel_receipts VALUES (?, ?, ?)').run(
           input.requestId,
           payload,

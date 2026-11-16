@@ -2,9 +2,12 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } fr
 import type { AppState } from '../../../../shared/appState'
 import { useRecordCup } from '../water/useRecordCup'
 import { useCancelWater } from '../water/useCancelWater'
-import { plantImage, plantIndex, plants } from '../plant/plantVisual'
+import { plantFrame } from '../plant/plantVisual'
 import wateringCan from '../../assets/icons/watering-can.webp'
 import './garden.css'
+
+// 카메라 감지 표시와 되돌리기 버튼을 보여 주는 시간. 대시보드 안내와 같다.
+const DETECTED_MS = 8000
 
 function Garden({
   state,
@@ -16,8 +19,12 @@ function Garden({
   const [isOpen, setIsOpen] = useState(false)
   const [pouring, setPouring] = useState(false)
   const [showUndo, setShowUndo] = useState(false)
-  const [watered, setWatered] = useState(false)
   const [dragError, setDragError] = useState('')
+  // 카메라가 마신 동작을 감지해 저장한 기록. 잠시 표시하고 되돌릴 수 있게 한다.
+  const [detected, setDetected] = useState<number | null>(null)
+  const [celebrating, setCelebrating] = useState(false)
+  const [detectBusy, setDetectBusy] = useState(false)
+  const [detectError, setDetectError] = useState('')
   const gesture = useRef<{ id: number; x: number; y: number; moved: boolean } | null>(null)
   const suppressClick = useRef(false)
 
@@ -57,19 +64,7 @@ function Garden({
       })
       .catch(() => setDragError('위치를 저장하지 못했어요. 다시 옮겨 주세요.'))
   }
-  const plant = plants[plantIndex(state.plantStage)]
-  const source = plantImage(state.plantStage, state.plantVitality, watered)
-  const rim =
-    watered && state.plantStage === 'young'
-      ? 436
-      : watered && state.plantStage === 'flower'
-        ? 436
-        : state.plantVitality < 45 && state.plantStage === 'leafy'
-          ? 412
-          : plant.rim
-  const faded =
-    state.plantVitality < 100 && (state.plantStage === 'seedling' || state.plantStage === 'flower')
-  const dry = (100 - state.plantVitality) / 100
+  const { image: source, rim, filter } = plantFrame(state.plantStage, state.plantVitality)
   const { record, busy, error } = useRecordCup(state, refresh)
   const { cancel, retry, busy: cancelBusy, error: cancelError, retryable } = useCancelWater(refresh)
   const latest =
@@ -93,13 +88,9 @@ function Garden({
   useEffect(() => {
     let timer: number | undefined
     let undoTimer: number | undefined
-    let wateredTimer: number | undefined
     const unsubscribe = window.hanzanhae.onWaterRecorded(() => {
       window.clearTimeout(timer)
       window.clearTimeout(undoTimer)
-      window.clearTimeout(wateredTimer)
-      setWatered(true)
-      wateredTimer = window.setTimeout(() => setWatered(false), 2600)
       setShowUndo(false)
       setIsOpen(true)
       setPouring(true)
@@ -116,10 +107,62 @@ function Garden({
     return () => {
       window.clearTimeout(timer)
       window.clearTimeout(undoTimer)
-      window.clearTimeout(wateredTimer)
       unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    let hideTimer: number | undefined
+    let celebrateTimer: number | undefined
+    const unsubscribe = window.hanzanhae.onDrinkDetected((recordId) => {
+      window.clearTimeout(hideTimer)
+      window.clearTimeout(celebrateTimer)
+      setDetectError('')
+      setDetected(recordId)
+      setCelebrating(true)
+      celebrateTimer = window.setTimeout(() => setCelebrating(false), 1400)
+      hideTimer = window.setTimeout(() => setDetected(null), DETECTED_MS)
+    })
+    return () => {
+      window.clearTimeout(hideTimer)
+      window.clearTimeout(celebrateTimer)
+      unsubscribe()
+    }
+  }, [])
+
+  // 대시보드에서 되돌리는 등 기록이 바뀌면 버튼을 거둔다. 저장 직후에는 상태가 한 번 늦게
+  // 따라오므로 이 기록이 화면에 반영된 것을 본 뒤에만 판단한다.
+  const latestDrinkId = state.latestDrinkId
+  const seenDetected = useRef(false)
+  useEffect(() => {
+    seenDetected.current = false
+  }, [detected])
+  useEffect(() => {
+    if (detected === null) return
+    if (latestDrinkId === detected) seenDetected.current = true
+    else if (seenDetected.current) setDetected(null)
+  }, [detected, latestDrinkId])
+
+  async function undoDetected(): Promise<void> {
+    if (detected === null || state.status !== 'ready') return
+    setDetectBusy(true)
+    try {
+      const response = await window.hanzanhae.recordDrinkAction({
+        requestId: crypto.randomUUID(),
+        expectedGoalId: state.goalId,
+        day: state.day,
+        kind: 'undo',
+        recordId: detected
+      })
+      if (response.ok) setDetected(null)
+      else setDetectError('되돌릴 수 없어요. 대시보드에서 최근 횟수를 취소해 주세요.')
+    } catch {
+      setDetectError('되돌릴 수 없어요. 대시보드에서 최근 횟수를 취소해 주세요.')
+    } finally {
+      setDetectBusy(false)
+      await refresh().catch(() => undefined)
+    }
+  }
 
   useEffect(() => {
     let currentIgnore: boolean | null = null
@@ -171,7 +214,9 @@ function Garden({
 
   return (
     <main className="garden-surface" aria-label="작은 정원">
-      <div className={`garden-widget ${isOpen ? 'is-open' : ''} ${pouring ? 'is-pouring' : ''}`}>
+      <div
+        className={`garden-widget ${isOpen ? 'is-open' : ''} ${pouring ? 'is-pouring' : ''} ${celebrating ? 'is-detected' : ''}`}
+      >
         <button
           className="garden-plant"
           type="button"
@@ -204,13 +249,7 @@ function Garden({
                   className="garden-top"
                   src={source}
                   alt=""
-                  style={
-                    faded
-                      ? {
-                          filter: `saturate(${1 - dry * 0.65}) sepia(${dry * 0.4}) brightness(${1 - dry * 0.06})`
-                        }
-                      : undefined
-                  }
+                  style={filter ? { filter } : undefined}
                 />
               </span>
             </span>
@@ -238,7 +277,52 @@ function Garden({
             ))}
           </span>
         )}
-        {showUndo && latest && state.status === 'ready' && (
+        {celebrating && (
+          <span className="garden-detect-drop" aria-hidden="true">
+            <i />
+            <b />
+          </span>
+        )}
+        {detected !== null && state.status === 'ready' && (
+          <span className="garden-detected" role="status" data-garden-interactive>
+            <span className="garden-detected-mark" aria-label="카메라가 물 마신 것을 기록했어요">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M12 3.5c-3 3.6-5.5 6.6-5.5 9.6a5.5 5.5 0 0 0 11 0c0-3-2.5-6-5.5-9.6Z"
+                  fill="currentColor"
+                />
+                <path
+                  d="m9.4 13.4 1.9 1.9 3.4-3.6"
+                  stroke="#fff"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+            <button
+              type="button"
+              className="garden-detected-undo"
+              aria-label="카메라 기록 되돌리기"
+              disabled={detectBusy}
+              onClick={() => void undoDetected()}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M9 14 4 9l5-5" />
+                <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+              </svg>
+            </button>
+          </span>
+        )}
+        {showUndo && latest && state.status === 'ready' && detected === null && (
           <button
             type="button"
             className="garden-undo"
@@ -261,9 +345,9 @@ function Garden({
             </svg>
           </button>
         )}
-        {(error || cancelError || dragError) && (
+        {(error || cancelError || dragError || detectError) && (
           <span className="garden-error" role="alert" data-garden-interactive>
-            {cancelError || error || dragError}
+            {cancelError || error || dragError || detectError}
             {retryable && (
               <button
                 type="button"

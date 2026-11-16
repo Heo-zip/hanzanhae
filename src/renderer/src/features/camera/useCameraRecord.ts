@@ -33,6 +33,22 @@ export function useCameraRecord(state: AppState, refresh: () => Promise<void>): 
   }, [])
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
+  // 정원에서 되돌리는 등 다른 곳에서 기록이 바뀌면 이 안내의 되돌리기 버튼을 거둔다.
+  // 저장 직후에는 화면 상태가 한 번 늦게 따라오므로, 기록이 화면에 반영된 것을 본 뒤에만 판단한다.
+  const latestDrinkId = state.status === 'ready' ? state.latestDrinkId : null
+  const seen = useRef(false)
+  useEffect(() => {
+    seen.current = false
+  }, [notice])
+  useEffect(() => {
+    if (notice?.kind !== 'recorded') return
+    if (latestDrinkId === notice.recordId) seen.current = true
+    else if (seen.current) {
+      window.clearTimeout(timer.current)
+      setNotice(null)
+    }
+  }, [notice, latestDrinkId])
+
   const send = useCallback(
     async (input: DrinkActionInput): Promise<AppState | 'stale' | 'failed'> => {
       try {
@@ -58,7 +74,8 @@ export function useCameraRecord(state: AppState, refresh: () => Promise<void>): 
       requestId: crypto.randomUUID(),
       expectedGoalId: current.goalId,
       day: current.day,
-      kind: 'add'
+      kind: 'add',
+      source: 'camera'
     })
     setBusy(false)
     if (typeof result === 'object' && result.status === 'ready' && result.latestDrinkId !== null)

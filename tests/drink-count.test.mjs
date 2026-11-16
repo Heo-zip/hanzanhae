@@ -113,7 +113,7 @@ test('기존 8 버전 데이터는 백업 후 유지하고 새 목표 횟수 설
     db.close()
     const legacy = new DatabaseSync(path)
     legacy.exec(
-      'DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 8;'
+      'DROP TABLE vitality_gains; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 8;'
     )
     legacy.close()
     const migrated = new AppDatabase(path, () => new Date('2026-11-15T03:00:00Z'))
@@ -139,7 +139,7 @@ test('기존 사용자가 새 횟수 목표를 설정하면 이전 기록과 성
     old.close()
     const raw = new DatabaseSync(path)
     raw.exec(
-      'DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 8;'
+      'DROP TABLE vitality_gains; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 8;'
     )
     raw.close()
     const db = new AppDatabase(path, () => new Date('2026-11-15T03:00:00Z'))
@@ -196,5 +196,72 @@ test('횟수 목표 달성과 알림은 용량 기록이 아닌 행동 횟수를
     assert.equal(day.achieved, true)
     assert.equal(db.readReminderContext().todayCount, 2)
     assert.equal(db.readReminderContext().goalCount, 2)
+  })
+})
+
+test('오늘 기록 전체 취소는 오늘 마신 횟수와 그 생기도 함께 취소한다', () => {
+  withDatabase((db) => {
+    let state = db.completeSetup({ requestId: 'setup', goalCount: 8, cupMl: 500 })
+    const base = { expectedGoalId: state.goalId, day: state.day }
+    db.recordDrinkAction({ ...base, kind: 'add', requestId: 'one', source: 'camera' })
+    db.recordDrinkAction({ ...base, kind: 'add', requestId: 'two', source: 'camera' })
+    state = db.recordCup({ ...base, requestId: 'bottle' }, { cameraActive: true }).state
+    assert.equal(state.todayCount, 2)
+    // 오늘 기록 목록에 보일 마신 횟수는 최신 순이고 출처를 담는다.
+    assert.deepEqual(
+      state.todayDrinks.map((drink) => [drink.id, drink.source]),
+      [
+        [2, 'camera'],
+        [1, 'camera']
+      ]
+    )
+    assert.equal(state.plantVitality, 87)
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    const clear = (requestId, overrides = {}) =>
+      db.cancelWater({
+        ...base,
+        requestId,
+        kind: 'today',
+        expectedRecordIds: state.todayRecords.map((record) => record.id),
+        expectedDrinkCount: state.todayCount,
+        expectedLatestDrinkId: state.latestDrinkId,
+        ...overrides
+      })
+    // 화면에서 본 횟수와 다르면 취소하지 않는다.
+    assert.throws(() => clear('stale', { expectedDrinkCount: 1 }))
+    const result = clear('clear')
+    assert.equal(result.cancelledCount, 3)
+    assert.equal(result.state.todayCount, 0)
+    assert.equal(result.state.latestDrinkId, null)
+    assert.equal(result.state.todayMl, 0)
+    assert.equal(result.state.plantVitality, 60)
+    assert.equal(db.readStatistics().days.at(-1).drinkCount, 0)
+  })
+})
+
+test('텀블러 기록 없이 마신 횟수만 있어도 전체 취소할 수 있다', () => {
+  withDatabase((db) => {
+    const state = db.completeSetup({ requestId: 'setup', goalCount: 8, cupMl: 500 })
+    const base = { expectedGoalId: state.goalId, day: state.day }
+    const added = db.recordDrinkAction({ ...base, kind: 'add', requestId: 'one' }).state
+    const result = db.cancelWater({
+      ...base,
+      requestId: 'clear',
+      kind: 'today',
+      expectedRecordIds: [],
+      expectedDrinkCount: 1,
+      expectedLatestDrinkId: added.latestDrinkId
+    })
+    assert.equal(result.state.todayCount, 0)
+    assert.throws(() =>
+      db.cancelWater({
+        ...base,
+        requestId: 'again',
+        kind: 'today',
+        expectedRecordIds: [],
+        expectedDrinkCount: 0,
+        expectedLatestDrinkId: null
+      })
+    )
   })
 })

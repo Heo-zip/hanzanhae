@@ -86,9 +86,10 @@ test('최초 설정은 재실행해도 유지되고 같은 요청은 중복 저�
       todayRecords: [],
       todayCount: 0,
       latestDrinkId: null,
+      todayDrinks: [],
       day,
       plantStage: 'seedling',
-      plantVitality: 80,
+      plantVitality: 60,
       growthPoints: 0
     }
     assert.deepEqual(db.completeSetup(input), expected)
@@ -127,9 +128,10 @@ test('저장 도중 실패하면 모든 데이터가 취소되고 다시 시도�
       todayRecords: [],
       todayCount: 0,
       latestDrinkId: null,
+      todayDrinks: [],
       day,
       plantStage: 'seedling',
-      plantVitality: 80,
+      plantVitality: 60,
       growthPoints: 0
     })
     assert.deepEqual(db.completeSetup(input), {
@@ -141,9 +143,10 @@ test('저장 도중 실패하면 모든 데이터가 취소되고 다시 시도�
       todayRecords: [],
       todayCount: 0,
       latestDrinkId: null,
+      todayDrinks: [],
       day,
       plantStage: 'seedling',
-      plantVitality: 80,
+      plantVitality: 60,
       growthPoints: 0
     })
     assert.deepEqual(db.readState(), {
@@ -153,9 +156,10 @@ test('저장 도중 실패하면 모든 데이터가 취소되고 다시 시도�
       todayRecords: [],
       todayCount: 0,
       latestDrinkId: null,
+      todayDrinks: [],
       day,
       plantStage: 'seedling',
-      plantVitality: 80,
+      plantVitality: 60,
       growthPoints: 0
     })
     assert.throws(() => db.completeSetup({ ...input, requestId: 'new' }), AlreadyConfiguredError)
@@ -300,11 +304,12 @@ test('버전 1 데이터는 설정을 유지하며 버전 8로 이전한다', ()
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE water_records; DROP TABLE daily_adjustments; DROP TABLE settings_receipts; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 1'
+      'DROP TABLE vitality_gains; DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE water_records; DROP TABLE daily_adjustments; DROP TABLE settings_receipts; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 1'
     )
     old.close()
     const migrated = new AppDatabase(path)
-    assert.deepEqual(migrated.readState(), legacyState(expected))
+    // 버전 5 이전 데이터의 생기는 그때의 기본값 80으로 만든다.
+    assert.deepEqual(migrated.readState(), { ...legacyState(expected), plantVitality: 80 })
     assert.equal(migrated.updateSettings({ requestId: 'cup', kind: 'cup', cupMl: 300 }).cupMl, 300)
     migrated.close()
   } finally {
@@ -422,11 +427,11 @@ test('버전 2 데이터의 목표와 조정을 보존하며 물 기록 테이�
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE water_records; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 2'
+      'DROP TABLE vitality_gains; DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE water_records; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 2'
     )
     old.close()
     const migrated = new AppDatabase(path)
-    assert.deepEqual(migrated.readState(), legacyState(changed))
+    assert.deepEqual(migrated.readState(), { ...legacyState(changed), plantVitality: 80 })
     const countGoal = startCountGoal(migrated, migrated.readState())
     assert.equal(
       migrated.recordCup({ requestId: 'cup', expectedGoalId: countGoal.goalId, day }).state.todayMl,
@@ -515,6 +520,8 @@ test('오늘 전체 취소는 현재 목표 기록만 취소하고 이전 목표
     const input = {
       requestId: 'all',
       kind: 'today',
+      expectedDrinkCount: 0,
+      expectedLatestDrinkId: null,
       expectedGoalId: b.goalId,
       day: today,
       expectedRecordIds: [id]
@@ -568,6 +575,8 @@ test('전체 취소는 확인 후 기록이 바뀌면 거절하고 저장 실패
       ...base,
       requestId: 'stale',
       kind: 'today',
+      expectedDrinkCount: 0,
+      expectedLatestDrinkId: null,
       expectedRecordIds: one.todayRecords.map((r) => r.id)
     }
     const two = db.recordCup({ ...base, requestId: 'two' }).state
@@ -581,6 +590,8 @@ test('전체 취소는 확인 후 기록이 바뀌면 거절하고 저장 실패
       ...base,
       requestId: 'retry',
       kind: 'today',
+      expectedDrinkCount: 0,
+      expectedLatestDrinkId: null,
       expectedRecordIds: two.todayRecords.map((r) => r.id)
     }
     assert.throws(() => db.cancelWater(input))
@@ -686,7 +697,7 @@ test('버전 3 데이터의 기록을 보존하며 취소 이력 테이블을 �
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 3'
+      'DROP TABLE vitality_gains; DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE cancel_receipts; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 3'
     )
     old.close()
     const migrated = new AppDatabase(path)
@@ -760,7 +771,7 @@ test('기록한 텀블러 용량에 따라 성장하고 취소·재기록이 중
       db.recordCup({ requestId: id, expectedGoalId: state.goalId, day: state.day })
     state = record('one').state
     assert.equal(state.growthPoints, 300)
-    assert.equal(state.plantVitality, 95)
+    assert.equal(state.plantVitality, 90)
     state = record('two').state
     assert.equal(state.growthPoints, 600)
     assert.equal(state.plantVitality, 100)
@@ -833,6 +844,8 @@ test('목표 변경 후 전체 취소는 이전 목표와 이전 날짜의 성�
     state = db.cancelWater({
       requestId: 'clear',
       kind: 'today',
+      expectedDrinkCount: 0,
+      expectedLatestDrinkId: null,
       expectedGoalId: state.goalId,
       day: state.day,
       expectedRecordIds: state.todayRecords
@@ -867,7 +880,7 @@ test('성장 저장 실패는 물 기록과 생기 회복도 함께 롤백한다
     inspector.exec('DROP TRIGGER fail_growth')
     const result = db.recordCup(input)
     assert.equal(result.state.growthPoints, 100)
-    assert.equal(result.state.plantVitality, 95)
+    assert.equal(result.state.plantVitality, 90)
     inspector.close()
     db.close()
   } finally {
@@ -875,23 +888,35 @@ test('성장 저장 실패는 물 기록과 생기 회복도 함께 롤백한다
   }
 })
 
-test('생기는 실행 중과 종료 중 다른 속도로 감소하고 저장과 재실행으로 복원한다', () => {
+test('생기는 사용 중 시간당 10, 자리 비움·종료 중 시간당 2씩 줄고 재실행으로 복원한다', () => {
   const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-vitality-'))
   let now = new Date('2026-11-13T00:00:00Z')
+  // 앱은 1분마다 생기를 저장한다. 그 주기를 흉내 낸다.
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  const run = (db, minutes) => {
+    for (let i = 0; i < minutes; i++) {
+      now = new Date(now.getTime() + 60_000)
+      db.checkpointPlant()
+    }
+  }
   try {
     const path = join(dir, 'test.sqlite')
     let db = new AppDatabase(path, () => now)
-    db.completeSetup({ requestId: 'setup', goalCount: 1000, cupMl: 200 })
-    now = new Date('2026-11-13T05:00:00Z')
-    assert.equal(db.readState().plantVitality, 70)
+    db.completeSetup({ requestId: 'setup', goalCount: 8, cupMl: 200 })
+    assert.equal(db.readState().plantVitality, 60)
+    run(db, 60)
+    assert.equal(db.readState().plantVitality, 50)
+    db.setPresence('away')
+    run(db, 300)
+    assert.equal(db.readState().plantVitality, 40)
+    db.setPresence('active')
+    run(db, 30)
+    assert.equal(db.readState().plantVitality, 35)
     db.close()
-    now = new Date('2026-11-14T05:00:00Z')
+    now = new Date(now.getTime() + 5 * 3_600_000)
     db = new AppDatabase(path, () => now)
-    assert.equal(db.readState().plantVitality, 64)
-    let state = db.readState()
-    state = db.recordCup({ requestId: 'water', expectedGoalId: state.goalId, day: state.day }).state
-    assert.equal(state.plantVitality, 79)
-    now = new Date('2026-11-24T05:00:00Z')
+    assert.equal(db.readState().plantVitality, 25)
+    now = new Date(now.getTime() + 48 * 3_600_000)
     assert.equal(db.readState().plantVitality, 20)
     db.close()
   } finally {
@@ -911,7 +936,7 @@ test('버전 4의 기존 물 기록은 보존하되 성장 보상을 소급하�
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 4'
+      'DROP TABLE vitality_gains; DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE growth_events; DROP TABLE plant_vitality; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 4'
     )
     old.close()
     db = new AppDatabase(path, now)
@@ -929,20 +954,129 @@ test('버전 4의 기존 물 기록은 보존하되 성장 보상을 소급하�
   }
 })
 
-test('마지막 주기 저장 이후 강제 종료로 간주하면 남은 시간은 종료 중 속도로 계산한다', () => {
+test('저장 주기가 끊긴 잠자기·강제 종료 공백은 자리 비움 속도로 계산한다', () => {
   const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-checkpoint-'))
   let now = new Date('2026-11-13T00:00:00Z')
   try {
     const path = join(dir, 'test.sqlite')
-    const interrupted = new AppDatabase(path, () => now)
-    interrupted.completeSetup({ requestId: 'setup', goalCount: 1000, cupMl: 200 })
-    now = new Date('2026-11-13T05:00:00Z')
-    interrupted.checkpointPlant()
-    now = new Date('2026-11-14T05:00:00Z')
+    const db = new AppDatabase(path, () => now)
+    db.completeSetup({ requestId: 'setup', goalCount: 8, cupMl: 200 })
+    // 잠자기 알림 없이 10시간이 지나도 처음 3분만 사용 중으로 본다.
+    now = new Date('2026-11-13T10:00:00Z')
+    db.checkpointPlant()
+    assert.equal(db.readState().plantVitality, 40)
+    // 강제 종료 뒤 재실행해도 마지막 저장 이후는 종료 중 속도로 계산한다.
+    now = new Date('2026-11-13T15:00:00Z')
     const reopened = new AppDatabase(path, () => now)
-    assert.equal(reopened.readState().plantVitality, 64)
+    assert.equal(reopened.readState().plantVitality, 30)
     reopened.close()
-    interrupted.close()
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('마신 횟수는 생기를 6 올리고 버튼은 5분에 한 번만, 카메라는 제한 없이 올린다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-drink-vitality-'))
+  let now = new Date('2026-11-13T03:00:00Z')
+  try {
+    const db = new AppDatabase(join(dir, 'test.sqlite'), () => now)
+    let state = db.completeSetup({ requestId: 'setup', goalCount: 8, cupMl: 200 })
+    db.setPresence('away')
+    const base = { expectedGoalId: state.goalId, day: state.day, kind: 'add' }
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    const add = (requestId, source) => db.recordDrinkAction({ ...base, requestId, source }).state
+    assert.equal(add('button-1').plantVitality, 66)
+    assert.equal(add('button-2', 'button').plantVitality, 66)
+    assert.equal(add('camera-1', 'camera').plantVitality, 72)
+    assert.equal(add('camera-2', 'camera').plantVitality, 78)
+    state = db.recordDrinkAction({
+      ...base,
+      kind: 'undo',
+      requestId: 'undo-camera-2',
+      recordId: db.readState().latestDrinkId
+    }).state
+    assert.equal(state.plantVitality, 72)
+    assert.equal(state.todayCount, 3)
+    // 버튼 5분 제한은 마지막으로 생기를 올린 버튼 기록부터 센다.
+    now = new Date('2026-11-13T03:04:00Z')
+    assert.equal(add('button-3').plantVitality, 72)
+    now = new Date('2026-11-13T03:06:00Z')
+    assert.equal(add('button-4').plantVitality, 78)
+    assert.equal(db.readState().todayCount, 5)
+    assert.throws(() => add('bad', 'remote'))
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('텀블러는 카메라를 쓰면 15, 안 쓰면 30 올리고 취소하면 실제로 오른 만큼만 되돌린다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-cup-vitality-'))
+  const now = new Date('2026-11-13T03:00:00Z')
+  try {
+    const db = new AppDatabase(join(dir, 'test.sqlite'), () => now)
+    let state = db.completeSetup({ requestId: 'setup', goalCount: 8, cupMl: 200 })
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    const cup = (requestId, cameraActive) =>
+      db.recordCup({ requestId, expectedGoalId: state.goalId, day: state.day }, { cameraActive })
+        .state
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    const cancelLatest = (requestId) =>
+      db.cancelWater({
+        requestId,
+        kind: 'latest',
+        expectedGoalId: state.goalId,
+        day: state.day,
+        recordId: db.readState().todayRecords[0].id
+      }).state
+    assert.equal(cup('with-camera', true).plantVitality, 75)
+    assert.equal(cup('without-camera', false).plantVitality, 100)
+    assert.equal(cancelLatest('undo-1').plantVitality, 75)
+    assert.equal(cancelLatest('undo-2').plantVitality, 60)
+    state = db.readState()
+    cup('a')
+    cup('b')
+    state = db.cancelWater({
+      requestId: 'clear',
+      kind: 'today',
+      expectedDrinkCount: 0,
+      expectedLatestDrinkId: null,
+      expectedGoalId: state.goalId,
+      day: state.day,
+      expectedRecordIds: db.readState().todayRecords.map((record) => record.id)
+    }).state
+    assert.equal(state.plantVitality, 60)
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('정원에서는 15초 안의 최신 카메라 기록만 되돌릴 수 있다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-garden-undo-'))
+  let now = new Date('2026-11-13T03:00:00Z')
+  try {
+    const db = new AppDatabase(join(dir, 'test.sqlite'), () => now)
+    const state = db.completeSetup({ requestId: 'setup', goalCount: 8, cupMl: 200 })
+    const base = { expectedGoalId: state.goalId, day: state.day }
+    const garden = { recentCameraOnly: true }
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    const undo = (requestId) =>
+      db.recordDrinkAction(
+        { ...base, kind: 'undo', requestId, recordId: db.readState().latestDrinkId },
+        garden
+      )
+    assert.throws(() => db.recordDrinkAction({ ...base, kind: 'add', requestId: 'g-add' }, garden))
+    db.recordDrinkAction({ ...base, kind: 'add', requestId: 'button' })
+    assert.throws(() => undo('undo-button'))
+    db.recordDrinkAction({ ...base, kind: 'add', requestId: 'old', source: 'camera' })
+    now = new Date('2026-11-13T03:00:20Z')
+    assert.throws(() => undo('undo-old'))
+    db.recordDrinkAction({ ...base, kind: 'add', requestId: 'fresh', source: 'camera' })
+    now = new Date('2026-11-13T03:00:28Z')
+    assert.equal(undo('undo-fresh').state.todayCount, 2)
+    db.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -1235,7 +1369,7 @@ test('버전 5 데이터 이전 시 기존 기록을 유지하고 정원 설정 
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 5'
+      'DROP TABLE vitality_gains; DROP TABLE reminder_settings; DROP TABLE garden_settings; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 5'
     )
     old.close()
     db = new AppDatabase(path)
@@ -1267,7 +1401,7 @@ test('버전 6 정원 설정은 보존하면서 직접 이동한 위치를 저�
       CREATE TABLE garden_settings (id INTEGER PRIMARY KEY CHECK(id = 1), placement TEXT NOT NULL CHECK(placement IN ('dock','floor')), always_on_top INTEGER NOT NULL CHECK(always_on_top IN (0,1)), x INTEGER, y INTEGER, CHECK((x IS NULL AND y IS NULL) OR (x IS NOT NULL AND y IS NOT NULL)));
       INSERT INTO garden_settings SELECT * FROM tmp_settings;
       DROP TABLE tmp_settings;
-      DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 6;
+      DROP TABLE vitality_gains; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 6;
     `)
     old.close()
     db = new AppDatabase(path)
@@ -1296,7 +1430,7 @@ test('버전 7의 기록과 위치를 보존하며 알림 설정을 추가하고
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE reminder_settings; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 7'
+      'DROP TABLE vitality_gains; DROP TABLE reminder_settings; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 7'
     )
     old.close()
     db = new AppDatabase(path, () => now)
@@ -1435,23 +1569,28 @@ test('최초 설정부터 달성·취소·통계·알림 기준과 재실행 복
     state = db.cancelWater({
       requestId: 'flow-undo-all',
       kind: 'today',
+      expectedDrinkCount: state.todayCount,
+      expectedLatestDrinkId: state.latestDrinkId,
       expectedGoalId: goalId,
       day: state.day,
       expectedRecordIds: state.todayRecords.map((record) => record.id)
     }).state
+    // 전체 취소는 오늘 마신 횟수도 함께 취소한다.
     assert.equal(state.goalId, goalId)
     assert.equal(state.todayMl, 0)
     assert.equal(state.growthPoints, 0)
-    assert.equal(db.readStatistics().days.at(-1).achieved, true)
-    assert.equal(db.readReminderContext().latestRecordAt, now.toISOString())
+    assert.equal(state.todayCount, 0)
+    assert.equal(db.readStatistics().days.at(-1).achieved, false)
+    assert.equal(db.readReminderContext().latestRecordAt, null)
     db.close()
 
     db = new AppDatabase(path, () => now)
     assert.equal(db.readState().goalId, goalId)
     assert.equal(db.readState().todayMl, 0)
     assert.equal(db.readState().growthPoints, 0)
+    assert.equal(db.readState().todayCount, 0)
     assert.deepEqual(db.readReminderSettings(), reminders)
-    assert.equal(db.readStatistics().days.at(-1).achieved, true)
+    assert.equal(db.readStatistics().days.at(-1).achieved, false)
   } finally {
     db?.close()
     rmSync(dir, { recursive: true, force: true })
@@ -1471,7 +1610,7 @@ test('스키마 이전 전 사용자 기록을 복구 가능한 SQLite 백업으
     const old = new DatabaseSync(path)
     // WAL에 아직 남아 있는 변경도 백업에 반영돼야 한다.
     old.exec(
-      'PRAGMA journal_mode = WAL; DROP TABLE reminder_settings; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 7'
+      'PRAGMA journal_mode = WAL; DROP TABLE reminder_settings; DROP TABLE vitality_gains; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 7'
     )
     db = new AppDatabase(path)
     assert.equal(db.readState().todayMl, 250)
@@ -1502,7 +1641,7 @@ test('마이그레이션 전 백업을 만들 수 없다면 기존 데이터를 
     db.close()
     const old = new DatabaseSync(path)
     old.exec(
-      'DROP TABLE reminder_settings; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 7'
+      'DROP TABLE vitality_gains; DROP TABLE reminder_settings; DROP TABLE drink_actions; DROP TABLE drink_action_receipts; ALTER TABLE goal_sessions DROP COLUMN target_count; PRAGMA user_version = 7'
     )
     old.close()
     writeFileSync(join(dir, 'backups'), '백업 폴더를 만들 수 없는 상황')
@@ -1524,11 +1663,11 @@ test('더 최신 앱의 데이터베이스는 이전 버전에서 변경하지 �
     db.completeSetup({ requestId: 'future-setup', goalCount: 1000, cupMl: 250 })
     db.close()
     const future = new DatabaseSync(path)
-    future.exec('PRAGMA user_version = 10')
+    future.exec('PRAGMA user_version = 11')
     future.close()
     assert.throws(() => new AppDatabase(path), /지원하지 않는 데이터베이스 버전/)
     const unchanged = new DatabaseSync(path, { readOnly: true })
-    assert.equal(unchanged.prepare('PRAGMA user_version').get().user_version, 10)
+    assert.equal(unchanged.prepare('PRAGMA user_version').get().user_version, 11)
     assert.equal(unchanged.prepare('SELECT target_ml FROM goal_sessions').get().target_ml, 250)
     unchanged.close()
   } finally {
