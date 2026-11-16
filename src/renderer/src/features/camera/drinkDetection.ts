@@ -39,6 +39,15 @@ const STRAW_HOLD_MS = 500
 // 손 주변 확대 영역의 한 변(어깨 너비의 배수)과, 어깨 아래 얼마까지를 '든 손'으로 볼지(어깨 너비의 배수).
 const ZOOM_SIZE = 1.2
 const RAISED_BELOW_SHOULDER = 1
+// 용기로 판정에 쓰는 최소 점수. 화면에는 0.2부터 보여 준다.
+// 손 주변 확대 이미지에서는 입에 댄 빈손을 컵 30% 안팎으로 잡는 일이 있어 더 높게 둔다(2026-11-16 사용자 확인). 실측 전 임시값이다.
+const HOLD_SCORE = 0.3
+const ZOOM_HOLD_SCORE = 0.5
+
+/** 검출 점수가 '용기를 들었다' 판정에 쓸 만큼 높은지 본다. */
+export function countsAsContainer(score: number | undefined, zoomed: boolean): boolean {
+  return (score ?? 0) >= (zoomed ? ZOOM_HOLD_SCORE : HOLD_SCORE)
+}
 
 /** Face Landmarker 변환 행렬(4×4, 열 우선)에서 얼굴 정면 방향의 위아래 각도(도)를 구한다. */
 export function headPitchUp(matrix: ArrayLike<number>): number | null {
