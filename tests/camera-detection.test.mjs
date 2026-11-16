@@ -344,3 +344,48 @@ test('입 모양 측정은 현재 값과 최근 3초 최고값을 돌려준다',
   assert.deepEqual(meter.observe(null, 3500).peak, { pucker: 0.2, funnel: 0.3 })
   assert.equal(meter.observe(null, 5000).peak, null)
 })
+
+test('빨대: 고개를 젖히지 않아도 입을 오므린 채 0.5초 이상 마시고 내리면 센다', () => {
+  const detector = new SipDetector()
+  let t = calm(detector)
+  const straw = { pucker: 0.6, funnel: 0.3 }
+  detector.observe({ pitch: 0, handAtMouth: true, containerHeld: true, mouth: straw }, t)
+  let result
+  for (let i = 0; i < 3; i++)
+    result = detector.observe(
+      { pitch: 0, handAtMouth: true, containerHeld: true, mouth: straw },
+      (t += 250)
+    )
+  assert.equal(result.phase, 'sipping')
+  assert.equal(result.straw, true)
+  // 손을 내리고 0.4초가 지나면 한 번 센다.
+  const fired = [250, 500, 750].map(
+    (step) =>
+      detector.observe({ pitch: 0, handAtMouth: false, containerHeld: true }, t + step).fired
+  )
+  assert.deepEqual(fired, [false, false, true])
+})
+
+test('빨대: 입을 잠깐만 오므리거나 용기가 없으면 세지 않는다', () => {
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  const run = (frames, held) => {
+    const detector = new SipDetector()
+    let t = calm(detector)
+    let fired = false
+    for (const pucker of frames)
+      fired ||= detector.observe(
+        { pitch: 0, handAtMouth: true, containerHeld: held, mouth: { pucker, funnel: 0 } },
+        (t += 250)
+      ).fired
+    for (let i = 0; i < 10; i++)
+      fired ||= detector.observe(
+        { pitch: 0, handAtMouth: false, containerHeld: false },
+        (t += 250)
+      ).fired
+    return fired
+  }
+  assert.equal(run([0.1, 0.6, 0.1, 0.6, 0.1], true), false)
+  assert.equal(run([0.2, 0.3, 0.3, 0.3, 0.2], true), false)
+  assert.equal(run([0.6, 0.6, 0.6, 0.6, 0.6], false), false)
+  assert.equal(run([0.6, 0.6, 0.6, 0.6, 0.6], true), true)
+})

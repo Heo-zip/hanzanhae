@@ -613,7 +613,7 @@ type ConfiguredState = Exclude<AppState, { status: 'setup-required' }>
 const sipSteps = [
   { key: 'held', label: '컵이나 병을 들어요' },
   { key: 'mouth', label: '입으로 가져가요' },
-  { key: 'sip', label: '고개를 젖혀 마셔요' }
+  { key: 'sip', label: '고개를 젖히거나 빨대로 마셔요' }
 ] as const
 
 /**
@@ -644,8 +644,9 @@ function CameraView({
           : status?.holdSource === 'mouth'
             ? '입에 댄 걸 찾았어요'
             : '손을 가슴 위로 들면 주변을 확대해 찾아요'
-  const headHint =
-    status?.headSource === 'face'
+  const headHint = status?.straw
+    ? '빨대로 마시는 걸 봤어요'
+    : status?.headSource === 'face'
       ? `고개 ${(status.lift ?? 0) > 0 ? '+' : ''}${status.lift}°`
       : status?.headSource === 'pose'
         ? '몸 자세로 보고 있어요'
@@ -685,7 +686,7 @@ function CameraView({
           <li className="hand">손·확대 영역</li>
           <li className="mouth">입</li>
         </ul>
-        {/* 빨대 음용 기준을 정하기 위한 측정용 표시다. 판정에는 아직 쓰지 않는다. */}
+        {/* 빨대 판정은 입 오므림이 0.45 이상일 때다. 기준을 조정할 때 이 값을 본다. */}
         <p className="camera-measure" aria-label="입 모양 측정값">
           입 오므림 <b className="num">{status?.mouth ? status.mouth.pucker.toFixed(2) : '–'}</b>
           <small>3초 최고 {status?.mouthPeak ? status.mouthPeak.pucker.toFixed(2) : '–'}</small>·

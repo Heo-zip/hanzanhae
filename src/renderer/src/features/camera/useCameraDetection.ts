@@ -47,7 +47,9 @@ type DetectionStatus = {
   held: boolean
   holdSource: HoldSource | null
   sipPhase: SipPhase
-  /** 빨대 음용 기준을 정하기 위한 입 모양 측정값(0~1, 소수 둘째 자리). 판정에는 쓰지 않는다. */
+  /** 지금 마시는 동작을 빨대(입 오므림)로 판단했는지 */
+  straw: boolean
+  /** 빨대 판정 기준을 조정할 때 보는 입 모양 측정값(0~1, 소수 둘째 자리) */
   mouth: MouthShape | null
   mouthPeak: MouthShape | null
 }
@@ -409,7 +411,14 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
               ? isHandAtMouth(meshMouth, faceHeight, handPoints, aspect)
               : isHandAtMouth(head?.mouth ?? null, (head?.scale ?? 0) * 0.6, handPoints, aspect)
           const sip = sipDetector.observe(
-            { pitch, posePitch: head?.pitch ?? null, covered, handAtMouth, containerHeld: held },
+            {
+              pitch,
+              posePitch: head?.pitch ?? null,
+              covered,
+              handAtMouth,
+              containerHeld: held,
+              mouth: mouthReading.current
+            },
             now
           )
 
@@ -422,6 +431,7 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
               held,
               holdSource: containerHold.source,
               sipPhase: sip.phase,
+              straw: sip.straw,
               mouth: roundShape(mouthReading.current),
               mouthPeak: roundShape(mouthReading.peak)
             }
