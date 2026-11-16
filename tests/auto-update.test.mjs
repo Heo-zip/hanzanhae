@@ -222,6 +222,7 @@ test('macOS 업데이트 종료 이벤트는 창을 숨기지 않고 닫을 수 
     electron: { app: events, autoUpdater: nativeUpdater, ipcMain: new EventEmitter() },
     '@electron-toolkit/utils': { is: {} },
     '../storage/ipc': {},
+    '../../shared/platform': {},
     './gardenPosition': {}
   }
   windowModule.require = (name) =>

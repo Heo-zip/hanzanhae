@@ -1,11 +1,13 @@
 import { app, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import type { LoginItemResult } from '../shared/appState'
+import { platformSupport } from '../shared/platform'
 import { trusted as fromAppDocument } from './storage/ipc'
 
-// 로그인 항목은 macOS가 직접 관리하므로 DB에 따로 저장하지 않고 매번 시스템에서 읽는다.
-// 개발 실행은 Electron 바이너리가 등록되므로 배포 앱(macOS)에서만 사용한다.
+// 로그인 항목은 OS(macOS 로그인 항목·Windows 시작 프로그램)가 직접 관리하므로 DB에 따로 저장하지 않고
+// 매번 시스템에서 읽는다. 개발 실행은 Electron 바이너리가 등록되므로 배포 앱에서만 사용한다.
+// Linux는 Electron이 지원하지 않아 화면에서 미지원으로 안내한다.
 function available(): boolean {
-  return process.platform === 'darwin' && app.isPackaged
+  return platformSupport(process.platform).loginItem && app.isPackaged
 }
 
 function current(): LoginItemResult {

@@ -5,6 +5,7 @@ import type {
   GardenSettingsChange,
   LoginItemResult
 } from '../../../../shared/appState'
+import { dockName, platformName, platformSupport } from '../../../../shared/platform'
 import { isMlInput } from '../water/mlInput'
 import StopGoalDialog from './StopGoalDialog'
 import ResetDataDialog from './ResetDataDialog'
@@ -14,6 +15,15 @@ import { plants as stages } from '../plant/plantVisual'
 import { type ConfiguredState, format } from './dashboardFormat'
 import { Glass } from './parts'
 import CameraView from './CameraView'
+
+const platform = window.hanzanhae?.platform ?? 'darwin'
+const support = platformSupport(platform)
+// 이 OS에서 동작하지 않는 위젯 기능을 조용히 빼지 않고 설정 화면에 알린다.
+const unsupportedWidgetFeatures = [
+  !support.gardenClickThrough &&
+    '정원 창의 빈 곳 클릭 통과(정원 창 영역은 아래 창을 클릭할 수 없어요)',
+  !support.screenLockEvents && '화면 잠금 감지(잠금 중에도 생기가 평소 속도로 줄어요)'
+].filter((feature): feature is string => !!feature)
 
 export default function Settings({
   state,
@@ -359,7 +369,7 @@ export default function Settings({
                 <i className="dock" />
                 <img src={stages[2].image} alt="" className="on-dock" />
               </span>
-              <b>Dock 위</b>
+              <b>{dockName(platform)} 위</b>
             </button>
             <button
               className={`place ${gardenSettings?.placement === 'floor' ? 'on' : ''}`}
@@ -413,7 +423,11 @@ export default function Settings({
               <div>
                 <b>로그인 시 자동 실행</b>
                 {loginItem && !loginItem.available && (
-                  <span className="set-sub">설치한 앱에서 바꿀 수 있어요</span>
+                  <span className="set-sub">
+                    {support.loginItem
+                      ? '설치한 앱에서 바꿀 수 있어요'
+                      : `${platformName(platform)}에서는 지원하지 않아요`}
+                  </span>
                 )}
                 {loginItem?.needsApproval && (
                   <span className="set-sub">
@@ -435,6 +449,12 @@ export default function Settings({
                 {loginError}
               </p>
             )}
+            {unsupportedWidgetFeatures.length > 0 && (
+              <p className="preview-note">
+                {platformName(platform)}에서는 지원하지 않아요:{' '}
+                {unsupportedWidgetFeatures.join(', ')}
+              </p>
+            )}
           </div>
         </section>
         <section className="sset wide">
@@ -446,7 +466,7 @@ export default function Settings({
               <div>
                 <b>마시는 동작 알아보기</b>
                 <span className="camera-sub">
-                  마시면 오늘 횟수에 1회 기록해요. 영상은 이 Mac에서만 보고 저장하지 않아요
+                  마시면 오늘 횟수에 1회 기록해요. 영상은 이 컴퓨터에서만 보고 저장하지 않아요
                 </span>
               </div>
               <button
