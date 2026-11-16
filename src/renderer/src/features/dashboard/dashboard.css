@@ -25,6 +25,7 @@
 }
 /* ── 공통 토큰 ── */
 :root {
+  color-scheme: light dark;
   --page: #f3f4f6;
   --window: #fdfdfd;
   --side: var(--window);
@@ -53,26 +54,28 @@
   --sky-a: #f1fbf4;
   --sky-b: #dcf4e4;
 }
-:root[data-theme='dark'] {
-  --page: #0e0f11;
-  --window: #17191b;
-  --card: #1f2224;
-  --card-sub: #282b2e;
-  --line: #2d3134;
-  --nav-on: #25282b;
-  --text: #edf1ef;
-  --text-sub: #a2aca7;
-  --text-muted: #74807a;
-  --hill-a: #2f4a2c;
-  --hill-b: #284124;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 22px rgba(0, 0, 0, 0.25);
-}
-:root[data-theme='dark'][data-brand='green'] {
-  --brand-ink: #5fd896;
-  --brand-mid: #2c5a40;
-  --brand-soft: #1d3428;
-  --sky-a: #1c2621;
-  --sky-b: #1a2e23;
+/* macOS 화면 모드를 따라간다. 정원 창은 바탕화면 위에 떠 있어 밝은 색을 유지한다. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0e0f11;
+    --window: #17191b;
+    --card: #1f2224;
+    --card-sub: #282b2e;
+    --line: #2d3134;
+    --nav-on: #25282b;
+    --text: #edf1ef;
+    --text-sub: #a2aca7;
+    --text-muted: #74807a;
+    --hill-a: #2f4a2c;
+    --hill-b: #284124;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 22px rgba(0, 0, 0, 0.25);
+
+    --brand-ink: #5fd896;
+    --brand-mid: #2c5a40;
+    --brand-soft: #1d3428;
+    --sky-a: #1c2621;
+    --sky-b: #1a2e23;
+  }
 }
 
 * {
@@ -355,6 +358,14 @@ main {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  /* 큰 모니터에서 끝없이 늘어나지 않게 폭을 묶고 가운데 둔다. */
+  width: 100%;
+  max-width: 1560px;
+  margin-inline: auto;
+}
+/* 설정은 항목이 많아 창 높이에 맞추지 않고 내용대로 늘려 스크롤한다. */
+.view.on.settings-view {
+  flex: none;
 }
 .head {
   display: flex;
@@ -531,7 +542,9 @@ main {
   min-height: 0;
 }
 .col.main-col {
-  grid-template-rows: minmax(240px, 1fr) auto auto;
+  /* 남는 높이만큼 화분 카드를 키우되 460px에서 멈춘다. */
+  grid-template-rows: minmax(240px, 460px) auto auto;
+  align-content: start;
 }
 .col.side-col {
   grid-template-rows: auto minmax(0, 1fr);
@@ -1068,6 +1081,7 @@ main {
 }
 .goal-big span {
   font-size: 18px;
+  line-height: 1;
   color: var(--text-sub);
   font-weight: 600;
 }
@@ -1492,6 +1506,12 @@ main {
 @media (max-width: 1180px) {
   .window {
     aspect-ratio: auto;
+  }
+  /* 한 열이면 창 높이에 맞춰 줄이지 않고 내용 높이대로 두고 main을 스크롤한다. */
+  .view.on,
+  .today-grid,
+  .hist-grid {
+    flex: none;
   }
   .today-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -2020,6 +2040,11 @@ button:disabled {
 }
 .cf-keep .cf-keep-h::before {
   content: none;
+}
+/* 지워지는 항목은 남는 항목의 ✓ 대신 빨간 표시를 쓴다. */
+.cf-keep.gone li:not(.cf-keep-h)::before {
+  content: '✕';
+  color: var(--danger);
 }
 .cf-btns {
   display: grid;

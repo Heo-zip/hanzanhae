@@ -1,9 +1,9 @@
 .reminder-interval-trigger,
 .reminder-time-trigger {
   min-width: 0;
-  border: 1px solid #e1e8e2;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--card);
   padding: 8px;
   color: inherit;
   font: inherit;
@@ -28,7 +28,7 @@
   display: block;
   width: 18px;
   height: 18px;
-  color: #64776b;
+  color: var(--text-sub);
 }
 
 .reminder-time-trigger:focus-visible,
@@ -47,9 +47,9 @@
   width: 240px;
   height: 250px;
   padding: 12px;
-  border: 1px solid #e1e8e2;
+  border: 1px solid var(--line);
   border-radius: 14px;
-  background: #fff;
+  background: var(--card);
   box-shadow: 0 8px 24px #21392a26;
   color: var(--text);
   font-size: 13px;
@@ -89,7 +89,7 @@
   overflow-y: auto;
   padding: 3px;
   border-radius: 9px;
-  background: #f5f8f5;
+  background: var(--card-sub);
 }
 
 .reminder-time-option {
@@ -100,7 +100,7 @@
 }
 
 .reminder-time-option:hover {
-  background: #e8f3eb;
+  background: var(--brand-soft);
 }
 
 .reminder-time-option[aria-selected='true'] {
@@ -146,9 +146,9 @@
   z-index: 1000;
   overflow-y: auto;
   padding: 5px;
-  border: 1px solid #e1e8e2;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: #fff;
+  background: var(--card);
   box-shadow: 0 8px 24px #21392a26;
   color: var(--text);
   font-size: 14px;

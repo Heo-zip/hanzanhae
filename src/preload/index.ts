@@ -57,6 +57,8 @@ contextBridge.exposeInMainWorld('hanzanhae', {
   recordDrinkAction: (input: DrinkActionInput) =>
     ipcRenderer.invoke('app:record-drink-action', input),
   cancelWater: (input: CancelWaterInput) => ipcRenderer.invoke('app:cancel-water', input),
+  exportRecords: () => ipcRenderer.invoke('app:export-records'),
+  resetData: () => ipcRenderer.invoke('app:reset-data'),
   onWaterRecorded: (callback: () => void) => {
     const listener = (): void => callback()
     ipcRenderer.on('app:water-recorded', listener)
