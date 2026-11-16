@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { dockName } from '../../../../shared/platform'
 import { isMlInput } from '../water/mlInput'
 import wordmark from '../../assets/icons/wordmark.webp'
 import { plants } from '../plant/plantVisual'
@@ -190,7 +191,7 @@ function Onboarding({ onComplete }: { onComplete: () => Promise<void> }): React.
                   </span>
                 </div>
                 <p className="lead">
-                  화분은 Dock 위에 놓아둘게요.
+                  화분은 {dockName(window.hanzanhae?.platform ?? 'darwin')} 위에 놓아둘게요.
                   <br />
                   물을 마시고 화분에 물을 주세요.
                 </p>

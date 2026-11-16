@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('gardenWindow', {
 })
 
 contextBridge.exposeInMainWorld('hanzanhae', {
+  // 화면이 OS별 안내 문구와 미지원 기능을 표시할 때 쓴다.
+  platform: process.platform,
   getState: () => ipcRenderer.invoke('app:get-state'),
   getGardenSettings: () => ipcRenderer.invoke('garden:get-settings'),
   onGardenSettingsChanged: (callback: () => void) => {

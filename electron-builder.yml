@@ -34,8 +34,12 @@ electronFuses:
   enableNodeCliInspectArguments: false
   enableEmbeddedAsarIntegrityValidation: true
   onlyLoadAppFromAsar: true
+# Windows·Linux 설치 파일은 서명하지 않고 자동 업데이트 배포 정보(publish)도 넣지 않는다.
+# 자동 업데이트는 macOS만 검증했으므로 다른 OS는 앱에서 미지원으로 안내한다.
 win:
   executableName: hanzanhae
+  target:
+    - nsis
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -60,12 +64,14 @@ mac:
 dmg:
   artifactName: ${name}-${version}.${ext}
 linux:
+  # 실행 파일·패키지 이름에 한글 productName 대신 영문 이름을 쓴다.
+  executableName: hanzanhae
   target:
     - AppImage
-    - snap
     - deb
-  maintainer: electronjs.org
+  maintainer: Heo-zip
   category: Utility
+  synopsis: 물을 마시며 나만의 정원을 가꾸는 앱
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
