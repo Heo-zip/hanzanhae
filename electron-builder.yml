@@ -17,6 +17,13 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  # 개발 문서·시안·테스트·스크립트는 실행에 필요 없고 내부 자료라 배포 앱에 넣지 않는다.
+  - '!{docs,design,tests,scripts}/**'
+  - '!AGENTS.md'
+# 화면이 한국어뿐이므로 Electron 언어 파일은 한국어와 영어만 남긴다.
+electronLanguages:
+  - ko
+  - en
 asarUnpack:
   - resources/**
 # 배포 앱을 다른 용도로 실행하지 못하게 한다. 카메라 권한을 가진 앱을 Node로 실행하거나

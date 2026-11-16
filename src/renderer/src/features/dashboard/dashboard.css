@@ -242,6 +242,104 @@ button {
   border-radius: 50%;
   background: var(--brand);
 }
+.camera-toast {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 320px;
+  padding: 14px 16px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--brand);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 12px 32px rgba(20, 30, 40, 0.16);
+  animation: camera-toast-in 0.28s ease-out;
+}
+.camera-toast.error {
+  border-left-color: var(--danger);
+}
+.camera-toast-icon {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+.camera-toast.error .camera-toast-icon {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+.camera-toast-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.camera-toast-text b {
+  font-size: 14px;
+}
+.camera-toast-text span {
+  color: var(--text-sub);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.camera-toast-undo {
+  flex: none;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.camera-toast-undo:hover:not(:disabled) {
+  border-color: var(--text-sub);
+}
+.camera-toast-undo:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* 알림이 사라지기까지 남은 시간(8초)을 아래 막대로 보여준다. */
+.camera-toast-timer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 100%;
+  background: var(--brand-mid);
+  transform-origin: left;
+  animation: camera-toast-timer 8s linear forwards;
+}
+.camera-toast.error .camera-toast-timer {
+  background: var(--danger);
+  opacity: 0.4;
+}
+@keyframes camera-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@keyframes camera-toast-timer {
+  to {
+    transform: scaleX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .camera-toast,
+  .camera-toast-timer {
+    animation: none;
+  }
+}
 main {
   padding: 36px 40px;
   overflow: auto;
@@ -1148,6 +1246,23 @@ main {
   gap: 6px 14px;
   color: var(--text-sub);
   font-size: 12px;
+}
+.camera-measure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+  margin: 10px 0 0;
+  color: var(--text-sub);
+  font-size: 12px;
+}
+.camera-measure b {
+  color: var(--text);
+  font-size: 13px;
+}
+.camera-measure small {
+  color: var(--text-muted);
+  font-size: 11px;
 }
 .camera-legend li {
   display: flex;

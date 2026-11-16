@@ -1,6 +1,6 @@
 # 로컬 데이터 설계
 
-> 현재 작업: [#34](https://github.com/Heo-zip/hanzanhae/issues/34). SQLite 스키마 버전 9에서 물 마신 횟수와 텀블러 용량을 별도로 저장한다.
+> 현재 스키마: SQLite 버전 9([#34](https://github.com/Heo-zip/hanzanhae/issues/34)). 물 마신 횟수와 텀블러 용량을 별도로 저장한다. 카메라 감지는 새 테이블 없이 `drink_actions`에 기록하며 영상·좌표·특징값은 저장하지 않는다.
 
 ## 보관 원칙
 
