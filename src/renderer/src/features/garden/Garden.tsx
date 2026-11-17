@@ -8,6 +8,15 @@ import './garden.css'
 
 // 카메라 감지 표시와 되돌리기 버튼을 보여 주는 시간. 대시보드 안내와 같다.
 const DETECTED_MS = 8000
+// 감지 때 화분 위로 떨어지는 물방울의 가로 위치(화분 가운데 기준 px)와 시작 지연(ms).
+const DROPS = [
+  [-26, 0],
+  [8, 90],
+  [-6, 200],
+  [24, 280],
+  [-16, 380],
+  [14, 470]
+] as const
 
 function Garden({
   state,
@@ -279,7 +288,12 @@ function Garden({
         )}
         {celebrating && (
           <span className="garden-detect-drop" aria-hidden="true">
-            <i />
+            {DROPS.map(([x, delay], index) => (
+              <i
+                key={index}
+                style={{ '--x': `${x}px`, animationDelay: `${delay}ms` } as CSSProperties}
+              />
+            ))}
             <b />
           </span>
         )}
@@ -319,6 +333,7 @@ function Garden({
                 <path d="M9 14 4 9l5-5" />
                 <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
               </svg>
+              <span aria-hidden="true">되돌리기</span>
             </button>
           </span>
         )}
