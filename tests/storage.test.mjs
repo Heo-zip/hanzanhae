@@ -1755,8 +1755,13 @@ test('모든 기록 지우기는 사본을 남기고, 새 DB를 못 열면 원�
         throw new Error('열리면 안 됨')
       })
     )
+    assert.equal(db.isOpen(), true)
     assert.equal(db.readState().todayMl, 500)
     db.close()
+    assert.equal(
+      readdirSync(dir).some((name) => name.endsWith('.resetting')),
+      false
+    )
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
