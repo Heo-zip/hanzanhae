@@ -39,7 +39,8 @@ const CUP_GAIN = 15
 const CUP_GAIN_WITHOUT_CAMERA = 30
 const BUTTON_GAIN_COOLDOWN_MS = 5 * 60_000
 // 마신 횟수 1회의 성장점. 생기를 올린 기록만 성장에 넣어 버튼 연타로 자라지 않게 한다.
-const DRINK_GROWTH = 250
+// 하루 8회면 800점: 횟수만 쓰면 약 18일, 텀블러 1.5L와 함께면 약 6일에 꽃이 핀다.
+const DRINK_GROWTH = 100
 // 앱은 1분마다 생기를 저장한다. 그보다 긴 공백은 잠자기·강제 종료로 보고 자리 비움 속도로 계산한다.
 const ACTIVE_GAP_MS = 3 * 60_000
 // 정원의 카메라 감지 되돌리기 버튼은 8초 보인다. 처리 지연을 감안해 15초까지 받는다.

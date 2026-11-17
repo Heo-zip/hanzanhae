@@ -47,12 +47,12 @@ test('물 마신 횟수와 텀블러 용량은 각각 성장에 더해지고 각
     const action = db.recordDrinkAction({ ...base, kind: 'add', requestId: 'drink' })
     assert.equal(action.state.todayCount, 1)
     assert.equal(action.state.todayMl, 0)
-    assert.equal(action.state.growthPoints, 250)
+    assert.equal(action.state.growthPoints, 100)
     assert.equal(db.recordDrinkAction({ ...base, kind: 'add', requestId: 'drink' }).created, false)
     const water = db.recordCup({ ...base, requestId: 'bottle' }).state
     assert.equal(water.todayCount, 1)
     assert.equal(water.todayMl, 500)
-    assert.equal(water.growthPoints, 750)
+    assert.equal(water.growthPoints, 600)
     const undone = db.recordDrinkAction({
       ...base,
       kind: 'undo',
@@ -270,12 +270,12 @@ test('버튼 횟수는 5분 안에 다시 눌러도 성장을 한 번만 더하�
   withDatabase((db, _path, setNow) => {
     const state = db.completeSetup({ requestId: 'setup', goalCount: 8, cupMl: 500 })
     const base = { expectedGoalId: state.goalId, day: state.day, kind: 'add' }
-    assert.equal(db.recordDrinkAction({ ...base, requestId: 'b1' }).state.growthPoints, 250)
-    assert.equal(db.recordDrinkAction({ ...base, requestId: 'b2' }).state.growthPoints, 250)
+    assert.equal(db.recordDrinkAction({ ...base, requestId: 'b1' }).state.growthPoints, 100)
+    assert.equal(db.recordDrinkAction({ ...base, requestId: 'b2' }).state.growthPoints, 100)
     const camera = { ...base, source: 'camera' }
-    assert.equal(db.recordDrinkAction({ ...camera, requestId: 'c1' }).state.growthPoints, 500)
-    assert.equal(db.recordDrinkAction({ ...camera, requestId: 'c2' }).state.growthPoints, 750)
+    assert.equal(db.recordDrinkAction({ ...camera, requestId: 'c1' }).state.growthPoints, 200)
+    assert.equal(db.recordDrinkAction({ ...camera, requestId: 'c2' }).state.growthPoints, 300)
     setNow('2026-11-15T03:06:00Z')
-    assert.equal(db.recordDrinkAction({ ...base, requestId: 'b3' }).state.growthPoints, 1000)
+    assert.equal(db.recordDrinkAction({ ...base, requestId: 'b3' }).state.growthPoints, 400)
   })
 })
