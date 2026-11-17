@@ -23,7 +23,8 @@ const {
   handZoomRegions,
   mouthShape,
   MouthShapeMeter,
-  countsAsContainer
+  countsAsContainer,
+  analysisDue
 } = module.exports
 
 /** 평소 자세를 5프레임 보여 기준 각도를 만든다. */
@@ -392,10 +393,30 @@ test('빨대: 입을 잠깐만 오므리거나 용기가 없으면 세지 않는
 })
 
 test('확대 검출은 입에 댄 빈손 수준의 낮은 컵 점수를 용기로 쓰지 않는다', () => {
-  assert.equal(countsAsContainer(0.3, true), false)
-  assert.equal(countsAsContainer(0.49, true), false)
-  assert.equal(countsAsContainer(0.5, true), true)
-  assert.equal(countsAsContainer(0.25, false), false)
-  assert.equal(countsAsContainer(0.3, false), true)
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  const cup = (score) => ({ categoryName: 'cup', score })
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  const bottle = (score) => ({ categoryName: 'bottle', score })
+  assert.equal(countsAsContainer(cup(0.3), true), false)
+  assert.equal(countsAsContainer(cup(0.49), true), false)
+  assert.equal(countsAsContainer(cup(0.5), true), true)
+  assert.equal(countsAsContainer(cup(0.25), false), false)
+  assert.equal(countsAsContainer(cup(0.3), false), true)
   assert.equal(countsAsContainer(undefined, false), false)
+  // 손에 든 텀블러는 '물병(확대)' 26% 안팎으로 잡혀 물병만 기준을 낮춘다.
+  assert.equal(countsAsContainer(bottle(0.26), true), true)
+  assert.equal(countsAsContainer(bottle(0.22), false), true)
+  assert.equal(countsAsContainer(bottle(0.21), true), false)
+})
+
+test('쉬는 동안은 1초에 한 번, 마시는 낌새가 있으면 0.25초마다 분석한다', () => {
+  // 쉬는 중: 마지막 분석 뒤 1초가 지나야 다시 분석한다.
+  assert.equal(analysisDue(1250, 1000, 0), false)
+  assert.equal(analysisDue(1999, 1000, 0), false)
+  assert.equal(analysisDue(2000, 1000, 0), true)
+  // 활동 중: 마감 전에는 매 차례 분석한다.
+  assert.equal(analysisDue(1250, 1000, 5000), true)
+  assert.equal(analysisDue(5250, 5000, 5000), false)
+  // 처음에는 바로 분석한다.
+  assert.equal(analysisDue(0, -Infinity, 0), true)
 })

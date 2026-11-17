@@ -43,10 +43,19 @@ const RAISED_BELOW_SHOULDER = 1
 // 손 주변 확대 이미지에서는 입에 댄 빈손을 컵 30% 안팎으로 잡는 일이 있어 더 높게 둔다(2026-11-16 사용자 확인). 실측 전 임시값이다.
 const HOLD_SCORE = 0.3
 const ZOOM_HOLD_SCORE = 0.5
+// 물병은 따로 낮춘다. 텀블러는 모델이 배운 종류가 아니라 손에 들면 '물병(확대)' 26% 안팎으로 잡힌다
+// (2026-11-17 사용자 확인). 빈손 오감지는 '컵'으로 잡혀 물병 기준과 무관하다. 실측 전 임시값이다.
+const BOTTLE_HOLD_SCORE = 0.22
 
-/** 검출 점수가 '용기를 들었다' 판정에 쓸 만큼 높은지 본다. */
-export function countsAsContainer(score: number | undefined, zoomed: boolean): boolean {
-  return (score ?? 0) >= (zoomed ? ZOOM_HOLD_SCORE : HOLD_SCORE)
+/** 검출 결과가 '용기를 들었다' 판정에 쓸 만큼 확실한지 본다. */
+export function countsAsContainer(
+  category: { categoryName?: string; score: number } | undefined,
+  zoomed: boolean
+): boolean {
+  if (!category) return false
+  const minimum =
+    category.categoryName === 'bottle' ? BOTTLE_HOLD_SCORE : zoomed ? ZOOM_HOLD_SCORE : HOLD_SCORE
+  return category.score >= minimum
 }
 
 /** Face Landmarker 변환 행렬(4×4, 열 우선)에서 얼굴 정면 방향의 위아래 각도(도)를 구한다. */
@@ -282,6 +291,16 @@ export type SipFrame = {
 }
 
 export type SipPhase = 'idle' | 'approach' | 'sipping'
+
+// 쉬는 동안(사람이 없거나 손이 내려가 있을 때)은 1초에 한 번만 분석해 CPU를 아낀다.
+// 손이 가슴 위로 오르는 등 마시는 낌새가 보이면 그 뒤 4초 동안은 0.25초마다 분석한다.
+export const IDLE_ANALYSIS_MS = 1000
+export const ACTIVE_HOLD_MS = 4000
+
+/** 이번 0.25초 차례에 분석할지 정한다. lastRun은 마지막 분석 시각, activeUntil은 빠르게 볼 마감 시각이다. */
+export function analysisDue(now: number, lastRun: number, activeUntil: number): boolean {
+  return now < activeUntil || now - lastRun >= IDLE_ANALYSIS_MS
+}
 export type HeadSource = 'face' | 'pose' | 'covered' | 'none'
 export type SipResult = {
   fired: boolean

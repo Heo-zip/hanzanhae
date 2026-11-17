@@ -1,34 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  FaceLandmarker,
-  ObjectDetector,
-  PoseLandmarker,
-  type Detection
-} from '@mediapipe/tasks-vision'
 import { permissionSettingsHint } from '../../../../shared/platform'
 import wasmLoader from '../../../../../node_modules/@mediapipe/tasks-vision/wasm/vision_wasm_internal.js?url'
 import wasmBinary from '../../../../../node_modules/@mediapipe/tasks-vision/wasm/vision_wasm_internal.wasm?url'
 import objectModel from '../../assets/models/efficientdet_lite0.tflite?url'
 import faceMeshModel from '../../assets/models/face_landmarker.task?url'
 import poseModel from '../../assets/models/pose_landmarker_lite.task?url'
+import { ACTIVE_HOLD_MS, analysisDue, countsAsContainer } from './drinkDetection'
 import {
-  ContainerHold,
-  FaceCover,
-  SipDetector,
-  handZoomRegions,
-  mouthShape,
-  MouthShapeMeter,
-  countsAsContainer,
-  headPitchUp,
-  isHandAtMouth,
-  poseHead,
-  type Box,
-  type HeadSource,
-  type HoldSource,
-  type MouthShape,
-  type Point,
-  type SipPhase
-} from './drinkDetection'
+  EMPTY_OVERLAY,
+  type AnalysisResult,
+  type AnalyzerAssets,
+  type DetectionStatus,
+  type Overlay
+} from './cameraAnalyzer'
+import type { WorkerRequest, WorkerResponse } from './cameraWorker'
+import CameraWorker from './cameraWorker?worker&inline'
 
 export type CameraStatus = 'off' | 'starting' | 'on'
 export type CameraControl = {
@@ -41,46 +27,18 @@ export type CameraControl = {
   setPreview: (canvas: HTMLCanvasElement | null) => void
 }
 
-type DetectionStatus = {
-  lift: number | null
-  poseLift: number | null
-  headSource: HeadSource
-  handAtMouth: boolean | null
-  held: boolean
-  holdSource: HoldSource | null
-  sipPhase: SipPhase
-  /** 지금 마시는 동작을 빨대(입 오므림)로 판단했는지 */
-  straw: boolean
-  /** 빨대 판정 기준을 조정할 때 보는 입 모양 측정값(0~1, 소수 둘째 자리) */
-  mouth: MouthShape | null
-  mouthPeak: MouthShape | null
+/** 영상 한 장을 분석한다. 이전 분석이 끝나기 전에는 새 장을 받지 않는다(null). */
+type Runner = {
+  analyze: (video: HTMLVideoElement) => Promise<AnalysisResult | null>
+  close: () => void
 }
 
 type Resources = {
   stream?: MediaStream
-  objects?: ObjectDetector
-  zoomObjects?: ObjectDetector
-  faceMesh?: FaceLandmarker
-  pose?: PoseLandmarker
+  runner?: Runner
   timer?: number
   frame?: number
   video?: HTMLVideoElement
-}
-
-/** 마지막 분석 결과. 미리보기는 매 화면마다 영상 위에 이것을 겹쳐 그린다. */
-type Overlay = {
-  face: Box | null
-  objects: (Detection & { zoomed?: boolean })[]
-  handPoints: Point[]
-  mouth: Point | null
-  zoomRegions: Box[]
-}
-const EMPTY_OVERLAY: Overlay = {
-  face: null,
-  objects: [],
-  handPoints: [],
-  mouth: null,
-  zoomRegions: []
 }
 
 /** 미리보기에 얼굴(초록)·용기(파랑)·손목과 손끝(보라)·입(빨강)을 거울처럼 그린다. */
@@ -134,7 +92,7 @@ function drawPreview(
     const x = width - box.originX - box.width
     const category = object.categories[0]
     // 점수가 낮아 판정에 쓰지 않는 상자는 회색으로 그린다.
-    const ignored = !countsAsContainer(category?.score, Boolean(object.zoomed))
+    const ignored = !countsAsContainer(category, Boolean(object.zoomed))
     context.strokeStyle = ignored ? '#9aa5ad' : '#77c7ff'
     context.strokeRect(x, box.originY, box.width, box.height)
     const label =
@@ -161,15 +119,6 @@ function drawPreview(
   }
 }
 
-function roundShape(shape: MouthShape | null): MouthShape | null {
-  return shape
-    ? { pucker: Math.round(shape.pucker * 100) / 100, funnel: Math.round(shape.funnel * 100) / 100 }
-    : null
-}
-
-// 손 주변 확대 이미지 크기. EfficientDet-Lite0 입력 크기와 같다.
-const ZOOM_INPUT = 320
-
 function localAsset(asset: string): string {
   const url = new URL(asset, window.location.href)
   if (url.protocol !== 'file:') return url.href
@@ -181,10 +130,64 @@ function release(resources: Resources): void {
   if (resources.frame !== undefined) cancelAnimationFrame(resources.frame)
   resources.stream?.getTracks().forEach((track) => track.stop())
   if (resources.video) resources.video.srcObject = null
-  resources.objects?.close()
-  resources.zoomObjects?.close()
-  resources.faceMesh?.close()
-  resources.pose?.close()
+  resources.runner?.close()
+}
+
+/** 배포 앱: Worker에서 분석한다. 화면 쪽은 영상 한 장을 복사해 넘기기만 한다. */
+async function workerRunner(assets: AnalyzerAssets): Promise<Runner> {
+  const worker = new CameraWorker()
+  let pending: ((response: WorkerResponse) => void) | null = null
+  worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+    const resolve = pending
+    pending = null
+    resolve?.(event.data)
+  }
+  const request = (
+    message: WorkerRequest,
+    transfer: Transferable[] = []
+  ): Promise<WorkerResponse> =>
+    new Promise((resolve, reject) => {
+      pending = resolve
+      worker.onerror = (event) => reject(new Error(event.message))
+      worker.postMessage(message, transfer)
+    })
+  try {
+    const ready = await request({ type: 'init', assets })
+    if (ready.type === 'error') throw new Error(ready.message)
+  } catch (error) {
+    worker.terminate()
+    throw error
+  }
+  let busy = false
+  return {
+    analyze: async (video) => {
+      if (busy) return null
+      busy = true
+      try {
+        const image = await createImageBitmap(video)
+        const response = await request({ type: 'frame', image }, [image])
+        if (response.type === 'error') throw new Error(response.message)
+        return response.type === 'result' ? response.result : null
+      } finally {
+        busy = false
+      }
+    },
+    close: () => worker.terminate()
+  }
+}
+
+/** 개발 모드: Vite 개발 서버의 Worker는 모듈 방식이라 MediaPipe를 불러올 수 없어 화면 쪽에서 분석한다. */
+async function inlineRunner(
+  assets: AnalyzerAssets,
+  isCancelled: () => boolean
+): Promise<Runner | null> {
+  const { createAnalyzer } = await import('./cameraAnalyzer')
+  const analyzer = await createAnalyzer(assets, isCancelled)
+  if (!analyzer) return null
+  return {
+    analyze: async (video) => analyzer.analyze(video, video.videoWidth, video.videoHeight),
+    close: analyzer.close
+  }
 }
 
 export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraControl {
@@ -253,44 +256,18 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
     const isCancelled = (): boolean => current !== generation.current
     try {
       // 모델과 실행 파일은 앱 안에서 불러오며 카메라 영상을 저장하거나 전송하지 않는다.
-      const fileset = {
+      const assets: AnalyzerAssets = {
         wasmLoaderPath: localAsset(wasmLoader),
-        wasmBinaryPath: localAsset(wasmBinary)
+        wasmBinaryPath: localAsset(wasmBinary),
+        objectModel: localAsset(objectModel),
+        faceMeshModel: localAsset(faceMeshModel),
+        poseModel: localAsset(poseModel)
       }
-      local.objects = await ObjectDetector.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: localAsset(objectModel), delegate: 'CPU' },
-        runningMode: 'VIDEO',
-        scoreThreshold: 0.2,
-        categoryAllowlist: ['cup', 'bottle', 'wine glass'],
-        maxResults: 5
-      })
-      if (isCancelled()) return
-      // 손 주변을 잘라 크게 키운 이미지를 한 장씩 보는 검출기다. 영상 모드 검출기와 시간 기록이 섞이지 않게 따로 둔다.
-      local.zoomObjects = await ObjectDetector.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: localAsset(objectModel), delegate: 'CPU' },
-        runningMode: 'IMAGE',
-        scoreThreshold: 0.2,
-        categoryAllowlist: ['cup', 'bottle', 'wine glass'],
-        maxResults: 3
-      })
-      if (isCancelled()) return
-      local.faceMesh = await FaceLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: localAsset(faceMeshModel), delegate: 'CPU' },
-        runningMode: 'VIDEO',
-        numFaces: 1,
-        // 고개를 돌리거나 일부가 가려져도 추적이 덜 끊기도록 기본값 0.5보다 낮춘다.
-        minFacePresenceConfidence: 0.3,
-        minTrackingConfidence: 0.3,
-        outputFacialTransformationMatrixes: true,
-        // 빨대 음용 측정을 위해 입술 오므리기 등 표정 값을 함께 받는다.
-        outputFaceBlendshapes: true
-      })
-      if (isCancelled()) return
-      local.pose = await PoseLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: localAsset(poseModel), delegate: 'CPU' },
-        runningMode: 'VIDEO',
-        numPoses: 1
-      })
+      const runner = import.meta.env.DEV
+        ? await inlineRunner(assets, isCancelled)
+        : await workerRunner(assets)
+      if (!runner) return
+      local.runner = runner
       if (isCancelled()) return
       local.stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
@@ -304,19 +281,9 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
       await local.video.play()
       if (isCancelled()) return
       const video = local.video
-      const objects = local.objects
-      const zoomObjects = local.zoomObjects
-      const zoomCanvas = document.createElement('canvas')
-      zoomCanvas.width = ZOOM_INPUT
-      zoomCanvas.height = ZOOM_INPUT
-      const zoomContext = zoomCanvas.getContext('2d')
-      const faceMesh = local.faceMesh
-      const pose = local.pose
-      const sipDetector = new SipDetector()
-      const mouthMeter = new MouthShapeMeter()
-      const containerHold = new ContainerHold()
-      const faceCover = new FaceCover()
       let lastTime = -1
+      let lastRun = -Infinity
+      let activeUntil = 0
       let overlay = EMPTY_OVERLAY
       local.stream.getVideoTracks().forEach((track) => {
         track.addEventListener('ended', () => {
@@ -325,164 +292,41 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
           setMessage('카메라가 연결 해제됐어요. 다시 켜 주세요.')
         })
       })
+      const fail = (): void => {
+        if (current !== generation.current) return
+        stop()
+        setMessage('카메라를 분석하지 못했어요. 다시 켜 주세요.')
+      }
       local.timer = window.setInterval(() => {
         if (video.readyState < 2 || video.currentTime === lastTime) return
+        const now = performance.now()
+        if (!analysisDue(now, lastRun, activeUntil)) return
+        lastRun = now
         lastTime = video.currentTime
-        try {
-          const now = performance.now()
-          const aspect = video.videoWidth / video.videoHeight
-          const containers = objects.detectForVideo(video, now).detections
-          const boxes: Box[] = containers.flatMap((item) =>
-            item.boundingBox && countsAsContainer(item.categories[0]?.score, false)
-              ? [
-                  {
-                    x: item.boundingBox.originX / video.videoWidth,
-                    y: item.boundingBox.originY / video.videoHeight,
-                    width: item.boundingBox.width / video.videoWidth,
-                    height: item.boundingBox.height / video.videoHeight
-                  }
-                ]
-              : []
-          )
-
-          // 얼굴 모델: 고개 각도, 입, 얼굴 크기와 영역
-          const meshResult = faceMesh.detectForVideo(video, now)
-          const mouthReading = mouthMeter.observe(
-            mouthShape(meshResult.faceBlendshapes?.[0]?.categories),
-            now
-          )
-          const faceMarks = meshResult.faceLandmarks[0]
-          const matrix = meshResult.facialTransformationMatrixes?.[0]?.data
-          const pitch = matrix ? headPitchUp(matrix) : null
-          const meshMouth =
-            faceMarks?.[13] && faceMarks[14]
-              ? {
-                  x: (faceMarks[13].x + faceMarks[14].x) / 2,
-                  y: (faceMarks[13].y + faceMarks[14].y) / 2
-                }
-              : null
-          const faceHeight =
-            faceMarks?.[10] && faceMarks[152]
-              ? Math.hypot(
-                  (faceMarks[152].x - faceMarks[10].x) * aspect,
-                  faceMarks[152].y - faceMarks[10].y
+        runner
+          .analyze(video)
+          .then((result) => {
+            if (!result || current !== generation.current) return
+            if (result.active) activeUntil = performance.now() + ACTIVE_HOLD_MS
+            if (preview.current) {
+              const next = result.status
+              setDetectionStatus((previous) =>
+                previous &&
+                (Object.keys(next) as (keyof DetectionStatus)[]).every(
+                  (key) => JSON.stringify(previous[key]) === JSON.stringify(next[key])
                 )
-              : 0
-          const faceBox: Box | null = faceMarks?.length
-            ? (() => {
-                const xs = faceMarks.map((mark) => mark.x)
-                const ys = faceMarks.map((mark) => mark.y)
-                const x = Math.min(...xs)
-                const y = Math.min(...ys)
-                return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y }
-              })()
-            : null
-
-          // 자세 모델: 얼굴을 놓쳤을 때의 머리 정보와 15~22번 손목·새끼·검지·엄지
-          const poseMarks = pose.detectForVideo(video, now).landmarks[0] ?? []
-          const head = poseHead(poseMarks, aspect)
-          const handPoints = poseMarks
-            .slice(15, 23)
-            .filter((point) => (point.visibility ?? 0) >= 0.5)
-
-          // 손 주변을 잘라 320×320으로 키워 다시 찾는다. 손이 가슴 위로 올라왔을 때만 돈다.
-          const zoomRegions = zoomContext ? handZoomRegions(poseMarks, aspect) : []
-          const zoomed: (Detection & { zoomed: boolean })[] = []
-          const zoomBoxes: Box[] = []
-          for (const region of zoomRegions) {
-            const sx = region.x * video.videoWidth
-            const sy = region.y * video.videoHeight
-            const sw = region.width * video.videoWidth
-            const sh = region.height * video.videoHeight
-            zoomContext!.drawImage(video, sx, sy, sw, sh, 0, 0, ZOOM_INPUT, ZOOM_INPUT)
-            for (const item of zoomObjects.detect(zoomCanvas).detections) {
-              const box = item.boundingBox
-              if (!box) continue
-              const originX = sx + (box.originX / ZOOM_INPUT) * sw
-              const originY = sy + (box.originY / ZOOM_INPUT) * sh
-              const boxWidth = (box.width / ZOOM_INPUT) * sw
-              const boxHeight = (box.height / ZOOM_INPUT) * sh
-              zoomed.push({
-                ...item,
-                zoomed: true,
-                boundingBox: { ...box, originX, originY, width: boxWidth, height: boxHeight }
-              })
-              if (!countsAsContainer(item.categories[0]?.score, true)) continue
-              zoomBoxes.push({
-                x: originX / video.videoWidth,
-                y: originY / video.videoHeight,
-                width: boxWidth / video.videoWidth,
-                height: boxHeight / video.videoHeight
-              })
-            }
-          }
-
-          const held = containerHold.observe(
-            handPoints,
-            boxes,
-            now,
-            meshMouth ?? head?.mouth ?? null,
-            zoomBoxes,
-            zoomRegions.length > 0
-          )
-          const covered =
-            faceCover.observe(faceBox, handPoints, [...boxes, ...zoomBoxes], now) && held
-          // 얼굴이 보이면 얼굴 모델의 입을, 놓치면 자세 모델의 입과 어깨 너비를 쓴다.
-          const handAtMouth = covered
-            ? true
-            : meshMouth
-              ? isHandAtMouth(meshMouth, faceHeight, handPoints, aspect)
-              : isHandAtMouth(head?.mouth ?? null, (head?.scale ?? 0) * 0.6, handPoints, aspect)
-          const sip = sipDetector.observe(
-            {
-              pitch,
-              posePitch: head?.pitch ?? null,
-              covered,
-              handAtMouth,
-              containerHeld: held,
-              mouth: mouthReading.current
-            },
-            now
-          )
-
-          if (preview.current) {
-            const next: DetectionStatus = {
-              lift: sip.lift === null ? null : Math.round(sip.lift),
-              poseLift: sip.poseLift === null ? null : Math.round(sip.poseLift * 100) / 100,
-              headSource: sip.source,
-              handAtMouth,
-              held,
-              holdSource: containerHold.source,
-              sipPhase: sip.phase,
-              straw: sip.straw,
-              mouth: roundShape(mouthReading.current),
-              mouthPeak: roundShape(mouthReading.peak)
-            }
-            setDetectionStatus((previous) =>
-              previous &&
-              (Object.keys(next) as (keyof DetectionStatus)[]).every(
-                (key) => JSON.stringify(previous[key]) === JSON.stringify(next[key])
+                  ? previous
+                  : next
               )
-                ? previous
-                : next
-            )
-            overlay = {
-              face: faceBox,
-              objects: [...containers, ...zoomed],
-              handPoints,
-              mouth: meshMouth ?? head?.mouth ?? null,
-              zoomRegions
+              overlay = result.overlay
             }
-          }
-          // 감지 결과만 넘기고, 저장·실패 안내는 기록 쪽에서 맡는다. 영상 정보는 넘기지 않는다.
-          if (sip.fired) {
-            setSipCount((count) => count + 1)
-            sipHandler.current()
-          }
-        } catch {
-          stop()
-          setMessage('카메라를 분석하지 못했어요. 다시 켜 주세요.')
-        }
+            // 감지 결과만 넘기고, 저장·실패 안내는 기록 쪽에서 맡는다. 영상 정보는 넘기지 않는다.
+            if (result.fired) {
+              setSipCount((count) => count + 1)
+              sipHandler.current()
+            }
+          })
+          .catch(fail)
       }, 250)
       // 분석은 0.25초마다 하고, 영상은 화면 갱신마다 그려 부드럽게 보이게 한다. 창이 가려지면 브라우저가 그리기를 멈춘다.
       const paint = (): void => {
