@@ -5,7 +5,7 @@ import wasmBinary from '../../../../../node_modules/@mediapipe/tasks-vision/wasm
 import objectModel from '../../assets/models/efficientdet_lite0.tflite?url'
 import faceMeshModel from '../../assets/models/face_landmarker.task?url'
 import poseModel from '../../assets/models/pose_landmarker_lite.task?url'
-import { ACTIVE_HOLD_MS, analysisDue, countsAsContainer } from './drinkDetection'
+import { countsAsContainer } from './drinkDetection'
 import {
   EMPTY_OVERLAY,
   type AnalysisResult,
@@ -282,8 +282,6 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
       if (isCancelled()) return
       const video = local.video
       let lastTime = -1
-      let lastRun = -Infinity
-      let activeUntil = 0
       let overlay = EMPTY_OVERLAY
       local.stream.getVideoTracks().forEach((track) => {
         track.addEventListener('ended', () => {
@@ -299,15 +297,11 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
       }
       local.timer = window.setInterval(() => {
         if (video.readyState < 2 || video.currentTime === lastTime) return
-        const now = performance.now()
-        if (!analysisDue(now, lastRun, activeUntil)) return
-        lastRun = now
         lastTime = video.currentTime
         runner
           .analyze(video)
           .then((result) => {
             if (!result || current !== generation.current) return
-            if (result.active) activeUntil = performance.now() + ACTIVE_HOLD_MS
             if (preview.current) {
               const next = result.status
               setDetectionStatus((previous) =>

@@ -59,12 +59,10 @@ export const EMPTY_OVERLAY: Overlay = {
   zoomRegions: []
 }
 
-/** active: 손을 들었거나 용기를 잡는 등 마시는 낌새가 있어 촘촘히 봐야 하는지 */
 export type AnalysisResult = {
   overlay: Overlay
   status: DetectionStatus
   fired: boolean
-  active: boolean
 }
 
 /** 앱 전용 프로토콜로 바꾼 실행 파일·모델 주소 */
@@ -205,7 +203,7 @@ export async function createAnalyzer(
       const head = poseHead(poseMarks, aspect)
       const handPoints = poseMarks.slice(15, 23).filter((point) => (point.visibility ?? 0) >= 0.5)
 
-      // 손 옆에 용기가 보이면(낮은 점수 포함) 집어 드는 중일 수 있어 기억하고 촘촘히 본다.
+      // 손 옆에 용기가 보이면(낮은 점수 포함) 집어 드는 중일 수 있어 기억한다.
       const allBoxes: Box[] = containers.flatMap((item) =>
         item.boundingBox
           ? [
@@ -274,7 +272,9 @@ export async function createAnalyzer(
         zoomBoxes,
         zoomRegions.length > 0
       )
-      const covered = faceCover.observe(faceBox, handPoints, [...boxes, ...zoomBoxes], now) && held
+      // 정면으로 병을 들면 병 바닥이 얼굴을 가려 용기를 못 찾는다. 가림 자체는 용기 없이도 마시는 자세로 보고,
+      // 기록 여부는 마시는 중이나 내려놓은 직후에 용기가 보였는지로 정한다(SipDetector).
+      const covered = faceCover.observe(faceBox, handPoints, [...boxes, ...zoomBoxes], now)
       // 얼굴이 보이면 얼굴 모델의 입을, 놓치면 자세 모델의 입과 어깨 너비를 쓴다.
       const handAtMouth = covered
         ? true
@@ -295,13 +295,6 @@ export async function createAnalyzer(
 
       return {
         fired: sip.fired,
-        active:
-          containerNearHand ||
-          zoomRegions.length > 0 ||
-          held ||
-          covered ||
-          handAtMouth === true ||
-          sip.phase !== 'idle',
         status: {
           lift: sip.lift === null ? null : Math.round(sip.lift),
           poseLift: sip.poseLift === null ? null : Math.round(sip.poseLift * 100) / 100,
