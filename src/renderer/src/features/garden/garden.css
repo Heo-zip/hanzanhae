@@ -225,7 +225,8 @@ html.garden-refresh-cursor [data-garden-interactive] {
 .garden-undo {
   position: absolute;
   left: 30px;
-  top: 30px;
+  /* 잎과 겹치지 않게 화분 위로 조금 띄운다. */
+  top: 14px;
   z-index: 5;
   /* 기록 직후 바로 누를 수 있도록 크고 진하게 보인다. */
   width: 40px;
@@ -330,7 +331,7 @@ html.garden-refresh-cursor [data-garden-interactive] {
   position: absolute;
   left: calc(50% - 5px + var(--x));
   /* 말풍선 아래에서 시작해 잎을 지나 흙에 닿는다. */
-  top: 12px;
+  top: 26px;
   width: 10px;
   height: 14px;
   border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
@@ -347,7 +348,7 @@ html.garden-refresh-cursor [data-garden-interactive] {
     opacity: 1;
   }
   100% {
-    transform: translateY(80px) scale(1.25, 0.45);
+    transform: translateY(66px) scale(1.25, 0.45);
     opacity: 0;
   }
 }
@@ -379,7 +380,7 @@ html.garden-refresh-cursor [data-garden-interactive] {
   position: absolute;
   /* 정원 창(160px) 안에 들어오도록 왼쪽으로 조금 내민다. */
   left: -20px;
-  top: -42px;
+  top: -28px;
   z-index: 5;
   display: flex;
   align-items: center;

@@ -27,6 +27,10 @@ function Garden({
 }): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false)
   const [pouring, setPouring] = useState(false)
+  const pouringRef = useRef(false)
+  useEffect(() => {
+    pouringRef.current = pouring
+  }, [pouring])
   const [showUndo, setShowUndo] = useState(false)
   const [dragError, setDragError] = useState('')
   // 카메라가 마신 동작을 감지해 저장한 기록. 잠시 표시하고 되돌릴 수 있게 한다.
@@ -128,6 +132,8 @@ function Garden({
       window.clearTimeout(celebrateTimer)
       setDetectError('')
       setDetected(recordId)
+      // 물을 주는 중이 아니면 열린 물뿌리개를 닫아 감지 말풍선과 겹치지 않게 한다.
+      setIsOpen((open) => (pouringRef.current ? open : false))
       setCelebrating(true)
       celebrateTimer = window.setTimeout(() => setCelebrating(false), 1400)
       hideTimer = window.setTimeout(() => setDetected(null), DETECTED_MS)
@@ -242,7 +248,8 @@ function Garden({
               suppressClick.current = false
               return
             }
-            if (!pouring) setIsOpen((open) => !open)
+            // 카메라 감지 되돌리기 버튼이 떠 있는 동안은 물뿌리개를 열지 않아 버튼과 겹치지 않게 한다.
+            if (!pouring && detected === null) setIsOpen((open) => !open)
           }}
         >
           <span
