@@ -1,6 +1,6 @@
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync } from 'node:fs'
+import { copyFileSync, mkdirSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type {
   AppState,
@@ -19,6 +19,31 @@ import type {
 } from '../../shared/appState'
 import { validReminderSettings } from '../reminders/policy'
 import { STAGE_POINTS } from '../../shared/appState'
+
+/**
+ * 모든 기록 지우기: 사본을 만들고 DB 파일을 지운 뒤 새 DB를 연다.
+ * 사본을 못 만들면 아무것도 지우지 않는다. 사본 뒤 단계가 실패하면 사본을 원래 자리로 되돌린 뒤 오류를 낸다.
+ */
+export function resetDatabaseFile(
+  db: AppDatabase,
+  path: string,
+  backupPath: string,
+  open: (path: string) => AppDatabase
+): AppDatabase {
+  db.backupTo(backupPath)
+  db.close()
+  const removeFiles = (): void => {
+    for (const suffix of ['', '-wal', '-shm', '-journal']) rmSync(path + suffix, { force: true })
+  }
+  try {
+    removeFiles()
+    return open(path)
+  } catch (error) {
+    removeFiles()
+    copyFileSync(backupPath, path)
+    throw error
+  }
+}
 
 export class AlreadyConfiguredError extends Error {}
 export class InvalidSetupError extends Error {}

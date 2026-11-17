@@ -28,6 +28,7 @@ if (previousTsLoader) Module._extensions['.ts'] = previousTsLoader
 else delete Module._extensions['.ts']
 const {
   AppDatabase,
+  resetDatabaseFile,
   AlreadyConfiguredError,
   InvalidSetupError,
   StaleStateError,
@@ -1712,6 +1713,49 @@ test('기록 내보내기는 취소하지 않은 기록만 한국 시각으로 �
     assert.equal(restored.readState().todayCount, 2)
     assert.equal(restored.readState().todayMl, 500)
     restored.close()
+    db.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('모든 기록 지우기는 사본을 남기고, 새 DB를 못 열면 원래 기록으로 되돌린다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-reset-'))
+  const path = join(dir, 'data.sqlite')
+  try {
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    const seed = (name) => {
+      const db = new AppDatabase(path)
+      const state = db.completeSetup({ requestId: `setup-${name}`, goalCount: 8, cupMl: 500 })
+      db.recordCup({ requestId: `cup-${name}`, expectedGoalId: state.goalId, day: state.day })
+      return db
+    }
+    // 성공: 사본에는 예전 기록, 새 DB는 첫 설정 상태
+    const backup = join(dir, 'backup-1.sqlite')
+    const fresh = resetDatabaseFile(seed('a'), path, backup, (file) => new AppDatabase(file))
+    assert.equal(fresh.readState().status, 'setup-required')
+    fresh.close()
+    const copy = new AppDatabase(backup)
+    assert.equal(copy.readState().todayMl, 500)
+    copy.close()
+    // 실패: 새 DB를 못 열면 원래 기록이 그대로 남는다
+    rmSync(path, { force: true })
+    assert.throws(() =>
+      resetDatabaseFile(seed('b'), path, join(dir, 'backup-2.sqlite'), () => {
+        throw new Error('열기 실패')
+      })
+    )
+    const restored = new AppDatabase(path)
+    assert.equal(restored.readState().todayMl, 500)
+    restored.close()
+    // 사본을 못 만들면 아무것도 지우지 않는다
+    const db = new AppDatabase(path)
+    assert.throws(() =>
+      resetDatabaseFile(db, path, join(dir, 'missing', 'backup.sqlite'), () => {
+        throw new Error('열리면 안 됨')
+      })
+    )
+    assert.equal(db.readState().todayMl, 500)
     db.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, powerMonitor } from 'electron'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, writeFileSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
@@ -19,6 +19,7 @@ import {
   AlreadyConfiguredError,
   AppDatabase,
   InvalidSetupError,
+  resetDatabaseFile,
   StaleStateError,
   NoRecordsError,
   TotalBelowZeroError
@@ -39,16 +40,18 @@ export function getDatabase(): AppDatabase {
   return database
 }
 
-// 사본을 먼저 만들고, 사본이 실패하면 아무것도 지우지 않는다.
 function resetDatabase(): void {
   const directory = join(app.getPath('userData'), 'backups')
   mkdirSync(directory, { recursive: true, mode: 0o700 })
-  getDatabase().backupTo(join(directory, `hanzanhae-before-reset-${Date.now()}.sqlite`))
-  database?.close()
+  const current = getDatabase()
+  // 닫힌 연결을 다시 쓰지 않도록 먼저 비운다. 실패해도 다음 조회가 되돌린 파일을 다시 연다.
   database = undefined
-  for (const suffix of ['', '-wal', '-shm', '-journal'])
-    rmSync(databasePath() + suffix, { force: true })
-  getDatabase()
+  database = resetDatabaseFile(
+    current,
+    databasePath(),
+    join(directory, `hanzanhae-before-reset-${Date.now()}.sqlite`),
+    (path) => new AppDatabase(path)
+  )
 }
 
 export function trusted(event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): boolean {
