@@ -91,6 +91,8 @@ const measure = (ms) => `(async () => {
   await new Promise((res) => { const f = (t) => { d.push(t - last); last = t; t < end ? requestAnimationFrame(f) : res() }; requestAnimationFrame(f) });
   po.disconnect();
   d.shift();
+  // 창이 가려져 한 장도 그리지 않으면 통계를 낼 수 없다.
+  if (!d.length) return { fps: 0, median: 0, p95: 0, max: Infinity, jank50: 0, jank100: 0, dropped: 0, droppedPct: 100, longTasks: lt.length, longTaskAvg: 0, longTaskMax: 0 };
   const s = [...d].sort((a, b) => a - b);
   const q = (p) => s[Math.min(s.length - 1, Math.floor(s.length * p))];
   const base = q(0.5);
@@ -216,4 +218,16 @@ try {
   rmSync(userData, { recursive: true, force: true })
   results.cleanup = { userDataFiles: files, removed: !existsSync(userData) }
   console.log(JSON.stringify({ label, ms: MS, ...results }, null, 1))
+  // 배포 빌드의 카메라 분석(Worker)이 실제로 돌았는지 확인한다. 실패하면 종료 코드 1.
+  const cameraBroken =
+    results.error ||
+    !results.cameraStarted?.on ||
+    !results.cameraAfter?.active?.includes('사용 중') ||
+    results.cameraAfter?.error
+  if (cameraBroken) {
+    console.error(
+      '카메라 분석 확인 실패: 위 결과의 cameraStarted·cameraAfter·error를 확인해 주세요.'
+    )
+    process.exitCode = 1
+  }
 }

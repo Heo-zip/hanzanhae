@@ -12,6 +12,8 @@ import {
   mouthShape,
   MouthShapeMeter,
   countsAsContainer,
+  distanceToBox,
+  CARRY_MEMORY_MS,
   headPitchUp,
   isHandAtMouth,
   poseHead,
@@ -143,6 +145,8 @@ export async function createAnalyzer(
     const containerHold = new ContainerHold()
     const faceCover = new FaceCover()
     let lastNow = 0
+    // 마지막으로 손 옆에 용기(점수 무관)가 보인 시각
+    let carriedAt = -Infinity
 
     const analyze = (image: TexImageSource, width: number, height: number): AnalysisResult => {
       // 영상 모드 모델은 시각이 계속 늘어나야 한다.
@@ -201,6 +205,25 @@ export async function createAnalyzer(
       const head = poseHead(poseMarks, aspect)
       const handPoints = poseMarks.slice(15, 23).filter((point) => (point.visibility ?? 0) >= 0.5)
 
+      // 손 옆에 용기가 보이면(낮은 점수 포함) 집어 드는 중일 수 있어 기억하고 촘촘히 본다.
+      const allBoxes: Box[] = containers.flatMap((item) =>
+        item.boundingBox
+          ? [
+              {
+                x: item.boundingBox.originX / width,
+                y: item.boundingBox.originY / height,
+                width: item.boundingBox.width / width,
+                height: item.boundingBox.height / height
+              }
+            ]
+          : []
+      )
+      const containerNearHand = handPoints.some((point) =>
+        allBoxes.some((box) => distanceToBox(point, box) <= 0.08)
+      )
+      if (containerNearHand) carriedAt = now
+      const carried = now - carriedAt <= CARRY_MEMORY_MS
+
       // 손 주변을 잘라 320×320으로 키워 다시 찾는다. 손이 가슴 위로 올라왔을 때만 돈다.
       const zoomRegions = zoomContext ? handZoomRegions(poseMarks, aspect) : []
       const zoomed: (Detection & { zoomed: boolean })[] = []
@@ -233,7 +256,7 @@ export async function createAnalyzer(
             zoomed: true,
             boundingBox: { ...box, originX, originY, width: boxWidth, height: boxHeight }
           })
-          if (!countsAsContainer(item.categories[0], true)) continue
+          if (!countsAsContainer(item.categories[0], true, carried)) continue
           zoomBoxes.push({
             x: originX / width,
             y: originY / height,
@@ -273,7 +296,12 @@ export async function createAnalyzer(
       return {
         fired: sip.fired,
         active:
-          zoomRegions.length > 0 || held || covered || handAtMouth === true || sip.phase !== 'idle',
+          containerNearHand ||
+          zoomRegions.length > 0 ||
+          held ||
+          covered ||
+          handAtMouth === true ||
+          sip.phase !== 'idle',
         status: {
           lift: sip.lift === null ? null : Math.round(sip.lift),
           poseLift: sip.poseLift === null ? null : Math.round(sip.poseLift * 100) / 100,
