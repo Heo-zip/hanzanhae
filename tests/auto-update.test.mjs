@@ -14,7 +14,7 @@ const source = ts.transpileModule(readFileSync(path, 'utf8'), {
 const testModule = new Module(path)
 testModule.filename = path
 testModule._compile(source, path)
-const { createUpdateController } = testModule.exports
+const { createUpdateController, developerIdSigned } = testModule.exports
 
 function harness() {
   const calls = []
@@ -231,4 +231,19 @@ test('macOS 업데이트 종료 이벤트는 창을 숨기지 않고 닫을 수 
   assert.equal(windowModule.exports.isAppQuitting(), false)
   nativeUpdater.emit('before-quit-for-update')
   assert.equal(windowModule.exports.isAppQuitting(), true)
+})
+
+test('Developer ID로 서명한 앱만 macOS 자동 업데이트 대상으로 본다', () => {
+  assert.equal(
+    developerIdSigned(
+      'Executable=/A.app\nAuthority=Developer ID Application: Heo (ABCDE12345)\nAuthority=Apple Root CA'
+    ),
+    true
+  )
+  assert.equal(
+    developerIdSigned('Executable=/A.app\nSignature=adhoc\nTeamIdentifier=not set'),
+    false
+  )
+  assert.equal(developerIdSigned('Authority=Apple Development: Heo (ABCDE12345)'), false)
+  assert.equal(developerIdSigned('code object is not signed at all'), false)
 })
