@@ -1,11 +1,28 @@
 import { app, dialog } from 'electron'
+import { spawnSync } from 'node:child_process'
+import { resolve } from 'node:path'
 import { autoUpdater } from 'electron-updater'
 import { platformName, platformSupport } from '../../shared/platform'
 import { getDatabase } from '../storage/ipc'
-import { createUpdateController } from './controller'
+import { createUpdateController, developerIdSigned } from './controller'
 
 const CHECK_DELAY = 30_000
 const CHECK_INTERVAL = 6 * 60 * 60_000
+
+let signedCache: boolean | null = null
+/** macOS 배포 앱이 Developer ID로 서명됐는지 한 번만 확인한다. 다른 OS는 서명 여부를 보지 않는다. */
+function updatableBuild(): boolean {
+  if (process.platform !== 'darwin') return true
+  if (signedCache === null) {
+    // .app/Contents/MacOS/실행 파일에서 세 단계 위가 .app이다.
+    const bundle = resolve(app.getPath('exe'), '..', '..', '..')
+    const result = spawnSync('/usr/bin/codesign', ['-dv', '--verbose=2', bundle], {
+      encoding: 'utf8'
+    })
+    signedCache = developerIdSigned(`${result.stdout ?? ''}${result.stderr ?? ''}`)
+  }
+  return signedCache
+}
 
 export function initializeUpdates(): () => void {
   // 사용자가 확인하기 전에는 다운로드하거나 앱 종료 시 자동 설치하지 않는다.
@@ -23,9 +40,11 @@ export function initializeUpdates(): () => void {
       unavailable: () =>
         message(
           '업데이트를 확인할 수 없어요',
-          platformSupport(process.platform).autoUpdate
-            ? '업데이트 확인은 설치한 앱에서 사용할 수 있어요.'
-            : `${platformName(process.platform)}에서는 자동 업데이트를 아직 지원하지 않아요. 새 버전은 배포 페이지에서 직접 받아 설치해 주세요.`
+          !platformSupport(process.platform).autoUpdate
+            ? `${platformName(process.platform)}에서는 자동 업데이트를 아직 지원하지 않아요. 새 버전은 배포 페이지에서 직접 받아 설치해 주세요.`
+            : !app.isPackaged
+              ? '업데이트 확인은 설치한 앱에서 사용할 수 있어요.'
+              : '이 버전은 자동 업데이트를 지원하지 않아요. 새 버전은 배포 페이지에서 DMG를 받아 직접 설치해 주세요. 물 기록과 설정은 그대로 유지돼요.'
         ),
       busy: () =>
         message('업데이트를 확인하고 있어요', '진행 중인 작업이 끝날 때까지 잠시 기다려 주세요.'),
@@ -78,7 +97,7 @@ export function initializeUpdates(): () => void {
           '안전하게 업데이트를 멈췄어요. 앱을 다시 실행한 뒤 시도해 주세요.'
         )
     },
-    () => platformSupport(process.platform).autoUpdate && app.isPackaged,
+    () => platformSupport(process.platform).autoUpdate && app.isPackaged && updatableBuild(),
     () => getDatabase().checkpointPlant()
   )
 

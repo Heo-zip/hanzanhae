@@ -108,3 +108,14 @@ export function createUpdateController(
 
   return { check, handleInstallError }
 }
+
+/**
+ * `codesign -dv` 출력으로 Developer ID 서명 여부를 본다. macOS 자동 업데이트(Squirrel.Mac)는
+ * 서명된 앱만 교체할 수 있어서, 서명 없이(ad-hoc) 배포한 앱은 업데이트를 미지원으로 안내한다.
+ */
+export function developerIdSigned(codesignOutput: string): boolean {
+  return (
+    !/Signature=adhoc/.test(codesignOutput) &&
+    /Authority=Developer ID Application:/.test(codesignOutput)
+  )
+}

@@ -15,6 +15,10 @@
 
 Electron · React · TypeScript · SQLite
 
+## 설치
+
+배포 페이지의 DMG를 받아 설치합니다. 지금 버전은 Apple 서명·공증 전이라 처음 열 때 한 번 허용이 필요합니다. [설치 안내](docs/install-mac.md)를 따라 주세요.
+
 ## 시작하기
 
 macOS와 Node.js 환경에서 실행합니다. Node.js 24에서 확인했습니다.
