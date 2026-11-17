@@ -1,7 +1,7 @@
 export type Point = { x: number; y: number }
 export type Box = { x: number; y: number; width: number; height: number }
 
-function distanceToBox(point: Point, box: Box): number {
+export function distanceToBox(point: Point, box: Box): number {
   const dx = Math.max(box.x - point.x, 0, point.x - (box.x + box.width))
   const dy = Math.max(box.y - point.y, 0, point.y - (box.y + box.height))
   return Math.hypot(dx, dy)
@@ -46,15 +46,26 @@ const ZOOM_HOLD_SCORE = 0.5
 // 물병은 따로 낮춘다. 텀블러는 모델이 배운 종류가 아니라 손에 들면 '물병(확대)' 26% 안팎으로 잡힌다
 // (2026-11-17 사용자 확인). 빈손 오감지는 '컵'으로 잡혀 물병 기준과 무관하다. 실측 전 임시값이다.
 const BOTTLE_HOLD_SCORE = 0.22
+// 방금 손 옆에 용기가 보였다면(점수 무관) 입에 댄 확대 컵은 0.3만 넘어도 인정한다.
+// 빈손 오감지는 손 옆에 용기가 없던 상황이라 막힌 채로 남는다. 실측 전 임시값이다.
+export const CARRY_MEMORY_MS = 4000
+const CARRIED_ZOOM_SCORE = 0.3
 
 /** 검출 결과가 '용기를 들었다' 판정에 쓸 만큼 확실한지 본다. */
 export function countsAsContainer(
   category: { categoryName?: string; score: number } | undefined,
-  zoomed: boolean
+  zoomed: boolean,
+  carried = false
 ): boolean {
   if (!category) return false
   const minimum =
-    category.categoryName === 'bottle' ? BOTTLE_HOLD_SCORE : zoomed ? ZOOM_HOLD_SCORE : HOLD_SCORE
+    category.categoryName === 'bottle'
+      ? BOTTLE_HOLD_SCORE
+      : zoomed
+        ? carried
+          ? CARRIED_ZOOM_SCORE
+          : ZOOM_HOLD_SCORE
+        : HOLD_SCORE
   return category.score >= minimum
 }
 
@@ -292,9 +303,10 @@ export type SipFrame = {
 
 export type SipPhase = 'idle' | 'approach' | 'sipping'
 
-// 쉬는 동안(사람이 없거나 손이 내려가 있을 때)은 1초에 한 번만 분석해 CPU를 아낀다.
+// 쉬는 동안(사람이 없거나 손이 내려가 있을 때)은 0.5초에 한 번만 분석해 CPU를 아낀다.
+// 1초로 했더니 빠르게 집어 드는 순간을 놓쳐 인식이 크게 떨어졌다(2026-11-17 사용자 확인).
 // 손이 가슴 위로 오르는 등 마시는 낌새가 보이면 그 뒤 4초 동안은 0.25초마다 분석한다.
-export const IDLE_ANALYSIS_MS = 1000
+export const IDLE_ANALYSIS_MS = 500
 export const ACTIVE_HOLD_MS = 4000
 
 /** 이번 0.25초 차례에 분석할지 정한다. lastRun은 마지막 분석 시각, activeUntil은 빠르게 볼 마감 시각이다. */

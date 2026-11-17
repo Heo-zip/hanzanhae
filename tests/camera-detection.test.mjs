@@ -407,13 +407,17 @@ test('확대 검출은 입에 댄 빈손 수준의 낮은 컵 점수를 용기�
   assert.equal(countsAsContainer(bottle(0.26), true), true)
   assert.equal(countsAsContainer(bottle(0.22), false), true)
   assert.equal(countsAsContainer(bottle(0.21), true), false)
+  // 방금 손 옆에 용기가 보였으면 입에 댄 확대 컵은 0.3부터 인정한다. 빈손(용기 없음)은 그대로 막힌다.
+  assert.equal(countsAsContainer(cup(0.3), true, true), true)
+  assert.equal(countsAsContainer(cup(0.29), true, true), false)
+  assert.equal(countsAsContainer(cup(0.3), true, false), false)
 })
 
-test('쉬는 동안은 1초에 한 번, 마시는 낌새가 있으면 0.25초마다 분석한다', () => {
-  // 쉬는 중: 마지막 분석 뒤 1초가 지나야 다시 분석한다.
+test('쉬는 동안은 0.5초에 한 번, 마시는 낌새가 있으면 0.25초마다 분석한다', () => {
+  // 쉬는 중: 마지막 분석 뒤 0.5초가 지나야 다시 분석한다.
   assert.equal(analysisDue(1250, 1000, 0), false)
-  assert.equal(analysisDue(1999, 1000, 0), false)
-  assert.equal(analysisDue(2000, 1000, 0), true)
+  assert.equal(analysisDue(1499, 1000, 0), false)
+  assert.equal(analysisDue(1500, 1000, 0), true)
   // 활동 중: 마감 전에는 매 차례 분석한다.
   assert.equal(analysisDue(1250, 1000, 5000), true)
   assert.equal(analysisDue(5250, 5000, 5000), false)
