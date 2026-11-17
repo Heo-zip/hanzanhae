@@ -221,7 +221,7 @@ try {
   // 배포 빌드의 카메라 분석(Worker)이 실제로 돌았는지 확인한다. 실패하면 종료 코드 1.
   const cameraBroken =
     results.error ||
-    !results.cameraStarted?.on ||
+    // 맥이 바쁘면 준비가 30초를 넘길 수 있어, 측정을 마친 시점에 카메라가 돌고 있는지로 판단한다.
     !results.cameraAfter?.active?.includes('사용 중') ||
     results.cameraAfter?.error
   if (cameraBroken) {

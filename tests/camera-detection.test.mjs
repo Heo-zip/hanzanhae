@@ -23,8 +23,7 @@ const {
   handZoomRegions,
   mouthShape,
   MouthShapeMeter,
-  countsAsContainer,
-  analysisDue
+  countsAsContainer
 } = module.exports
 
 /** 평소 자세를 5프레임 보여 기준 각도를 만든다. */
@@ -132,7 +131,7 @@ test('빠르게 들어 마셔 드는 순간 용기를 놓쳐도, 마시는 중�
   assert.equal(fired, 1)
 })
 
-test('마시는 동안 용기를 못 봤으면 내린 직후 1.5초 안에 보일 때만 센다', () => {
+test('마시는 동안 용기를 못 봤으면 내린 직후 3초 안에 보일 때만 센다', () => {
   // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- 테스트 보조 함수다.
   const run = (seenAfter) => {
     const detector = new SipDetector()
@@ -144,7 +143,8 @@ test('마시는 동안 용기를 못 봤으면 내린 직후 1.5초 안에 보�
     return count + (later.fired ? 1 : 0)
   }
   assert.equal(run(500), 1)
-  assert.equal(run(2500), 0)
+  assert.equal(run(2500), 1)
+  assert.equal(run(3500), 0)
 })
 
 test('8도만 젖혀도 마신 것으로 본다', () => {
@@ -413,14 +413,33 @@ test('확대 검출은 입에 댄 빈손 수준의 낮은 컵 점수를 용기�
   assert.equal(countsAsContainer(cup(0.3), true, false), false)
 })
 
-test('쉬는 동안은 0.5초에 한 번, 마시는 낌새가 있으면 0.25초마다 분석한다', () => {
-  // 쉬는 중: 마지막 분석 뒤 0.5초가 지나야 다시 분석한다.
-  assert.equal(analysisDue(1250, 1000, 0), false)
-  assert.equal(analysisDue(1499, 1000, 0), false)
-  assert.equal(analysisDue(1500, 1000, 0), true)
-  // 활동 중: 마감 전에는 매 차례 분석한다.
-  assert.equal(analysisDue(1250, 1000, 5000), true)
-  assert.equal(analysisDue(5250, 5000, 5000), false)
-  // 처음에는 바로 분석한다.
-  assert.equal(analysisDue(0, -Infinity, 0), true)
+test('정면으로 병을 들어 얼굴이 가려지면, 내려놓을 때 병이 보여야 센다', () => {
+  // 마시는 동안: 얼굴이 가려지고 병은 바닥만 보여 용기를 못 찾는다.
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- 테스트 보조 함수다.
+  const run = (seenOnPutDown) => {
+    const detector = new SipDetector()
+    let t = calm(detector)
+    let fired = 0
+    detector.observe({ pitch: 1, handAtMouth: true, containerHeld: false }, t)
+    for (let i = 0; i < 6; i += 1)
+      if (
+        detector.observe(
+          { pitch: null, covered: true, handAtMouth: true, containerHeld: false },
+          (t += 250)
+        ).fired
+      )
+        fired += 1
+    // 내리는 중: 고개는 젖혀 있지 않고, 내려놓는 순간 병이 보인다.
+    for (let i = 0; i < 8; i += 1)
+      if (
+        detector.observe(
+          { pitch: 0, handAtMouth: false, containerHeld: seenOnPutDown && i >= 5 },
+          (t += 250)
+        ).fired
+      )
+        fired += 1
+    return fired
+  }
+  assert.equal(run(true), 1)
+  assert.equal(run(false), 0)
 })

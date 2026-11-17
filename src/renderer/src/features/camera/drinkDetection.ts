@@ -22,7 +22,9 @@ const SIP_MAX_MS = 20000
 const SIP_COOLDOWN_MS = 5000
 const HOLD_MEMORY_MS = 6000
 // 빠르게 들어 마시면 드는 순간 용기를 놓치므로, 내린 뒤 이 시간 안에 용기가 보여도 인정한다.
-const CONTAINER_GRACE_MS = 1500
+// 카메라를 정면으로 보고 병을 들면 병 바닥만 보여 마시는 동안 용기를 못 찾는다. 다 마시고 내려놓을 때
+// 병이 보이는 경우가 많아 3초로 늘렸다(2026-11-17 사용자 확인).
+const CONTAINER_GRACE_MS = 3000
 // 손이 닿지 않은 채 보인 상자를 '제자리 용기'로 기억하는 시간과, 같은 자리로 볼 겹침 비율(IoU).
 const REST_MEMORY_MS = 10000
 const REST_OVERLAP = 0.3
@@ -303,16 +305,6 @@ export type SipFrame = {
 
 export type SipPhase = 'idle' | 'approach' | 'sipping'
 
-// 쉬는 동안(사람이 없거나 손이 내려가 있을 때)은 0.5초에 한 번만 분석해 CPU를 아낀다.
-// 1초로 했더니 빠르게 집어 드는 순간을 놓쳐 인식이 크게 떨어졌다(2026-11-17 사용자 확인).
-// 손이 가슴 위로 오르는 등 마시는 낌새가 보이면 그 뒤 4초 동안은 0.25초마다 분석한다.
-export const IDLE_ANALYSIS_MS = 500
-export const ACTIVE_HOLD_MS = 4000
-
-/** 이번 0.25초 차례에 분석할지 정한다. lastRun은 마지막 분석 시각, activeUntil은 빠르게 볼 마감 시각이다. */
-export function analysisDue(now: number, lastRun: number, activeUntil: number): boolean {
-  return now < activeUntil || now - lastRun >= IDLE_ANALYSIS_MS
-}
 export type HeadSource = 'face' | 'pose' | 'covered' | 'none'
 export type SipResult = {
   fired: boolean
