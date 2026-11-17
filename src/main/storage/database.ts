@@ -1,6 +1,6 @@
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
-import { copyFileSync, mkdirSync, rmSync } from 'node:fs'
+import { mkdirSync, renameSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type {
   AppState,
@@ -21,8 +21,9 @@ import { validReminderSettings } from '../reminders/policy'
 import { STAGE_POINTS } from '../../shared/appState'
 
 /**
- * 모든 기록 지우기: 사본을 만들고 DB 파일을 지운 뒤 새 DB를 연다.
- * 사본을 못 만들면 아무것도 지우지 않는다. 사본 뒤 단계가 실패하면 사본을 원래 자리로 되돌린 뒤 오류를 낸다.
+ * 모든 기록 지우기: 사본을 만들고 DB 파일을 옆으로 치운 뒤 새 DB를 연다.
+ * 사본을 못 만들면 아무것도 바꾸지 않는다(연결도 그대로 열려 있다).
+ * 새 DB를 못 열면 치워 둔 원래 파일을 이름만 되돌려 복구한다. 성공하면 치워 둔 파일을 지운다.
  */
 export function resetDatabaseFile(
   db: AppDatabase,
@@ -32,15 +33,22 @@ export function resetDatabaseFile(
 ): AppDatabase {
   db.backupTo(backupPath)
   db.close()
-  const removeFiles = (): void => {
-    for (const suffix of ['', '-wal', '-shm', '-journal']) rmSync(path + suffix, { force: true })
-  }
+  const aside = `${path}.resetting`
+  const sidecars = ['-wal', '-shm', '-journal']
+  rmSync(aside, { force: true })
+  renameSync(path, aside)
+  for (const suffix of sidecars) rmSync(path + suffix, { force: true })
   try {
-    removeFiles()
-    return open(path)
+    const fresh = open(path)
+    rmSync(aside, { force: true })
+    return fresh
   } catch (error) {
-    removeFiles()
-    copyFileSync(backupPath, path)
+    try {
+      for (const suffix of ['', ...sidecars]) rmSync(path + suffix, { force: true })
+    } catch {
+      // 아래 이름 되돌리기가 남은 파일을 덮어쓴다.
+    }
+    renameSync(aside, path)
     throw error
   }
 }
@@ -1110,6 +1118,10 @@ export class AppDatabase {
   /** 지금 데이터를 그대로 복사한다. 초기화 전에 되돌릴 수 있는 사본을 남길 때 쓴다. */
   backupTo(path: string): void {
     this.prepare('VACUUM INTO ?').run(path)
+  }
+
+  isOpen(): boolean {
+    return this.db.isOpen
   }
 
   close(): void {

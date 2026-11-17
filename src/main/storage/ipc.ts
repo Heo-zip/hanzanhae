@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
+import { randomUUID } from 'crypto'
 import type {
   AppResult,
   SetupInput,
@@ -44,14 +45,18 @@ function resetDatabase(): void {
   const directory = join(app.getPath('userData'), 'backups')
   mkdirSync(directory, { recursive: true, mode: 0o700 })
   const current = getDatabase()
-  // 닫힌 연결을 다시 쓰지 않도록 먼저 비운다. 실패해도 다음 조회가 되돌린 파일을 다시 연다.
-  database = undefined
-  database = resetDatabaseFile(
-    current,
-    databasePath(),
-    join(directory, `hanzanhae-before-reset-${Date.now()}.sqlite`),
-    (path) => new AppDatabase(path)
-  )
+  try {
+    database = resetDatabaseFile(
+      current,
+      databasePath(),
+      join(directory, `hanzanhae-before-reset-${randomUUID()}.sqlite`),
+      (path) => new AppDatabase(path)
+    )
+  } catch (error) {
+    // 사본 단계에서 실패하면 기존 연결이 그대로 열려 있어 계속 쓴다. 닫혔으면 다음 조회가 되돌린 파일을 연다.
+    if (!current.isOpen()) database = undefined
+    throw error
+  }
 }
 
 export function trusted(event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): boolean {
