@@ -9,7 +9,7 @@
 
 ## 설치
 
-1. 배포 페이지에서 `hanzanhae-버전.dmg`를 받습니다.
+1. 배포 페이지에서 `hanzanhae-mac-arm64.dmg`를 받습니다.
 2. DMG를 열고 **한잔해** 아이콘을 **응용 프로그램(Applications)** 폴더로 끌어 놓습니다.
 3. DMG 창을 닫고, Finder 사이드바에서 DMG를 꺼냅니다(⏏).
 
