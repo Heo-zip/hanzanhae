@@ -1,6 +1,5 @@
 import { useRef } from 'react'
 import type { CancelWaterResult, PlantStage } from '../../../../shared/appState'
-import drop from '../../assets/icons/drop.webp'
 import { plants, plantIndex } from '../plant/plantVisual'
 
 export type ClearTodaySnapshot = {
@@ -16,6 +15,7 @@ export type ClearTodaySnapshot = {
 
 type ErrorCode = Exclude<CancelWaterResult, { ok: true }>['code'] | null
 const format = (value: number): string => value.toLocaleString('ko-KR')
+const minus = (value: number): string => (value > 0 ? `−${format(value)}` : '0')
 
 function ClearTodayDialog({
   snapshot,
@@ -65,7 +65,7 @@ function ClearTodayDialog({
 
   return (
     <dialog
-      className="confirm"
+      className="confirm clear-today"
       aria-labelledby="clear-title"
       aria-describedby="clear-description"
       ref={(dialog) => {
@@ -93,33 +93,21 @@ function ClearTodayDialog({
               목표 바꾸기에서 오늘 마신 양을 먼저 확인해 주세요.
             </>
           ) : (
-            <>
-              오늘 마신 횟수와 지금 목표로 기록한 텀블러를
-              <br />
-              생기와 자란 만큼까지 함께 되돌려요.
-            </>
+            '오늘 기록과 그만큼 오른 생기·성장을 함께 되돌려요.'
           )}
         </p>
-        {!blocked && (
-          <div className="cf-drops" aria-hidden="true">
-            {Array.from({ length: Math.min(count, 8) }, (_, index) => (
-              <img key={index} src={drop} alt="" />
-            ))}
-            {count > 8 && <span>+{count - 8}</span>}
-          </div>
-        )}
         <div className="cf-sum">
           <div>
-            <span>취소할 마신 횟수</span>
-            <b className="num minus">{format(snapshot.drinkCount)}회</b>
+            <span>마신 횟수</span>
+            <b className="num">{minus(snapshot.drinkCount)}회</b>
           </div>
           <div>
-            <span>취소할 텀블러</span>
-            <b className="num minus">
-              {format(count)}잔 · {format(removed)}ml
+            <span>텀블러</span>
+            <b className="num">
+              {minus(count)}잔 · {format(removed)}ml
             </b>
           </div>
-          <div>
+          <div className="cf-total">
             <span>오늘 마신 양</span>
             <b className="num">
               {format(total)}ml → {format(after)}ml
@@ -127,17 +115,12 @@ function ClearTodayDialog({
           </div>
         </div>
         {!blocked && (
-          <ul className="cf-keep">
-            <li className="cf-keep-h">그대로 남아요</li>
-            <li>하루 목표 {format(snapshot.goalCount)}회</li>
-            <li>다른 목표와 어제까지의 기록, 화분</li>
-            {snapshot.adjustmentMl !== 0 && (
-              <li>
-                목표를 바꿀 때 적은 오늘 마신 양 {snapshot.adjustmentMl > 0 ? '+' : ''}
-                {format(snapshot.adjustmentMl)}ml
-              </li>
-            )}
-          </ul>
+          <p className="cf-note">
+            하루 목표 {format(snapshot.goalCount)}회와 다른 목표·어제까지의 기록, 화분은 그대로
+            남아요.
+            {snapshot.adjustmentMl !== 0 &&
+              ` 목표를 바꿀 때 적은 양(${snapshot.adjustmentMl > 0 ? '+' : ''}${format(snapshot.adjustmentMl)}ml)도 유지돼요.`}
+          </p>
         )}
         {attempted && error && !blocked && (
           <p className="cf-error" role="alert">

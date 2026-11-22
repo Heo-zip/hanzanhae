@@ -1,13 +1,14 @@
 import { useRef, useState } from 'react'
-import type { AppState, RecordCupInput } from '../../../../shared/appState'
+import type { AppState, RecordCupInput, WaterRecord } from '../../../../shared/appState'
 
 type ConfiguredState = Exclude<AppState, { status: 'setup-required' }>
+export type RecordedCup = WaterRecord & { day: string }
 
 export function useRecordCup(
   state: ConfiguredState,
   refresh: () => Promise<void>
 ): {
-  record: () => Promise<void>
+  record: () => Promise<RecordedCup | null>
   busy: boolean
   error: string
 } {
@@ -17,8 +18,8 @@ export function useRecordCup(
   // 응답이 유실된 경우 같은 요청 ID로 재시도해 두 번 기록하지 않는다.
   const pending = useRef<RecordCupInput | null>(null)
 
-  async function record(): Promise<void> {
-    if (running.current || state.status !== 'ready') return
+  async function record(): Promise<RecordedCup | null> {
+    if (running.current || state.status !== 'ready') return null
     running.current = true
     setBusy(true)
     setError('')
@@ -33,6 +34,7 @@ export function useRecordCup(
       if (result.ok) {
         pending.current = null
         await refresh()
+        return { ...result.record, day: input.day }
       } else if (result.code === 'STALE_STATE') {
         pending.current = null
         await refresh()
@@ -47,6 +49,7 @@ export function useRecordCup(
       running.current = false
       setBusy(false)
     }
+    return null
   }
   return { record, busy, error }
 }

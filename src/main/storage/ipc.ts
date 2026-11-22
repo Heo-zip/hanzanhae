@@ -14,6 +14,7 @@ import type {
   CancelWaterResult,
   StatisticsResult,
   DrinkActionInput,
+  DrinkActionResult,
   ExportRecordsResult
 } from '../../shared/appState'
 import {
@@ -22,6 +23,7 @@ import {
   InvalidSetupError,
   resetDatabaseFile,
   StaleStateError,
+  DrinkConfirmationRequiredError,
   NoRecordsError,
   TotalBelowZeroError
 } from './database'
@@ -177,7 +179,7 @@ export function initializeStorageIpc(
       return { ok: false, code: 'STORAGE_ERROR' }
     }
   })
-  ipcMain.handle('app:record-drink-action', (event, input: DrinkActionInput): AppResult => {
+  ipcMain.handle('app:record-drink-action', (event, input: DrinkActionInput): DrinkActionResult => {
     const fromDashboard = event.sender === getDashboard()?.webContents
     const fromGarden = event.sender === getGarden()?.webContents
     if (
@@ -198,6 +200,8 @@ export function initializeStorageIpc(
         sendToGarden(getGarden(), 'app:drink-detected', detected)
       return { ok: true, state: result.state }
     } catch (error) {
+      if (error instanceof DrinkConfirmationRequiredError)
+        return { ok: false, code: 'CONFIRM_DRINK', confirmation: error.confirmation }
       if (error instanceof InvalidSetupError) return { ok: false, code: 'VALIDATION_ERROR' }
       if (error instanceof StaleStateError) return { ok: false, code: 'STALE_STATE' }
       return { ok: false, code: 'STORAGE_ERROR' }

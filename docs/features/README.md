@@ -31,6 +31,7 @@ initial-setup-REPORT.md        # 기능 구현과 검증을 마친 뒤
 - 앱 업데이트: [PLAN](auto-update-PLAN.md), [REPORT](auto-update-REPORT.md), [패키징 네트워크 오류](auto-update-packaging-network-ERROR.md), [테스트 린트 오류](auto-update-test-lint-ERROR.md).
 - 정원 커서: [오류 기록](garden-cursor-feedback-ERROR.md). 실제 macOS 마우스 확인은 남아 있다.
 - 공통 패키지 검사: [패키지 검사 린트 오류](packaged-bundle-check-lint-ERROR.md).
+- 수동 기록 확인과 텀블러 되돌리기: [PLAN](drink-record-guards-PLAN.md), [REPORT](drink-record-guards-REPORT.md), [확인 뒤 포커스 오류](drink-record-guards-dialog-focus-ERROR.md).
 - Windows·Linux 지원: [REPORT](cross-platform-REPORT.md), [테스트 가짜 모듈 오류](cross-platform-test-mock-ERROR.md). 실제 Windows·Linux 실행은 확인 불가.
 - 계획과 결과는 해당 작업 시점의 기록이다. 이후 달라진 현재 동작·검증 범위는 [현재 상태](../CONTEXT.md)에서 확인한다.
 

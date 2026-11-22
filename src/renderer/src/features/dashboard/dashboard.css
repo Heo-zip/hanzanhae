@@ -1778,8 +1778,10 @@ html:not([data-platform='darwin']) .side .lights {
 button:disabled {
   cursor: not-allowed;
 }
-.drink:disabled {
+.drink:disabled,
+.drink[aria-disabled='true'] {
   opacity: 0.72;
+  cursor: not-allowed;
 }
 .goal-link {
   border: 0;
@@ -1930,6 +1932,15 @@ button:disabled {
   color: var(--brand-ink);
   font-size: 13px;
 }
+.cup-record-feedback {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 12px;
+}
+.cup-record-feedback:has(button) {
+  margin-top: 12px;
+}
 .cancel-retry {
   border: 0;
   background: transparent;
@@ -1955,6 +1966,72 @@ button:disabled {
 .confirm::backdrop {
   background: rgba(20, 28, 24, 0.36);
   backdrop-filter: blur(3px);
+}
+.drink-confirm:modal {
+  overscroll-behavior: contain;
+}
+.drink-confirm::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+.drink-confirm {
+  width: min(360px, calc(100vw - 32px));
+}
+.drink-confirm .cf-body {
+  padding: 32px 28px 24px;
+}
+.cf-icon {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 16px;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  display: grid;
+  place-items: center;
+}
+.cf-icon img {
+  width: 34px;
+  height: 34px;
+}
+.drink-confirm .lead,
+.cf-note {
+  word-break: keep-all;
+  text-wrap: balance;
+}
+.drink-confirm .lead {
+  margin: 8px 0 0;
+}
+.drink-confirm .water-error {
+  margin: 12px 0 0;
+}
+/* 전체 취소: 숫자는 한 카드에, 남는 것은 한 줄로 */
+.clear-today .cf-body {
+  padding: 32px 28px 24px;
+}
+.clear-today .cf-art {
+  width: 88px;
+  height: 88px;
+  margin-bottom: 16px;
+}
+.clear-today .cf-art img {
+  width: 76px;
+  margin-top: -8px;
+}
+.clear-today .cf-sum {
+  padding: 4px 18px;
+}
+.clear-today .cf-sum div {
+  padding: 12px 0;
+}
+.clear-today .cf-total span {
+  color: var(--text);
+  font-weight: 700;
+}
+.cf-note {
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-muted);
 }
 .cf-body {
   padding: 28px 28px 24px;
@@ -1986,24 +2063,6 @@ button:disabled {
   font-size: 14px;
   color: var(--text-sub);
   line-height: 1.6;
-}
-.cf-drops {
-  display: flex;
-  gap: 4px;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
-}
-.cf-drops img {
-  width: 22px;
-  height: 22px;
-  opacity: 0.9;
-}
-.cf-drops span {
-  font-size: 13px;
-  color: var(--text-sub);
-  align-self: center;
-  margin-left: 2px;
 }
 .cf-sum {
   width: 100%;

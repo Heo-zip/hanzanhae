@@ -44,10 +44,15 @@ export type DrinkActionInput = {
   recordId?: number
   /** 추가할 때만 쓴다. 없으면 버튼으로 본다. */
   source?: 'button' | 'camera'
+  /** 수동 추가 확인창에서 본 최신 기록이다. */
+  confirmedLatestDrinkId?: number
 }
+export type DrinkConfirmation = { reason: 'rapid' | 'camera'; latestDrinkId: number }
+export type DrinkActionResult =
+  AppResult | { ok: false; code: 'CONFIRM_DRINK'; confirmation: DrinkConfirmation }
 export type RecordCupInput = { requestId: string; expectedGoalId: number; day: string }
 export type RecordCupResult =
-  | { ok: true; state: AppState; created: boolean }
+  | { ok: true; state: AppState; created: boolean; record: WaterRecord }
   | { ok: false; code: 'VALIDATION_ERROR' | 'STALE_STATE' | 'STORAGE_ERROR' }
 
 export type CancelWaterInput =

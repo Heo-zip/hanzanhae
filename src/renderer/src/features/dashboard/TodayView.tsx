@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { STAGE_POINTS } from '../../../../shared/appState'
-import type { AppState, WaterStatistics, DrinkActionInput } from '../../../../shared/appState'
-import { useRecordCup } from '../water/useRecordCup'
+import type { AppState, WaterStatistics } from '../../../../shared/appState'
+import { useRecordCup, type RecordedCup } from '../water/useRecordCup'
+import { useRecordDrink } from '../water/useRecordDrink'
+import ConfirmDrinkDialog from './ConfirmDrinkDialog'
 import { useCancelWater } from '../water/useCancelWater'
 import ClearTodayDialog, { type ClearTodaySnapshot } from './ClearTodayDialog'
 import { WeekChart } from '../statistics/WaterStatistics'
@@ -42,52 +44,15 @@ export default function Today({
     errorCode
   } = useCancelWater(refresh)
   const [cancelNotice, setCancelNotice] = useState('')
-  const [drinkBusy, setDrinkBusy] = useState(false)
-  const [drinkError, setDrinkError] = useState('')
-  const [pendingDrinkKind, setPendingDrinkKind] = useState<'add' | 'undo' | null>(null)
-  const drinkRunning = useRef(false)
-  const pendingDrink = useRef<DrinkActionInput | null>(null)
-  async function changeDrinkCount(kind: 'add' | 'undo'): Promise<void> {
-    if (
-      drinkRunning.current ||
-      (kind === 'undo' && state.latestDrinkId === null && !pendingDrink.current)
-    )
-      return
-    if (pendingDrink.current && pendingDrink.current.kind !== kind) {
-      setDrinkError('이전 요청의 결과를 확인하도록 같은 버튼을 다시 눌러 주세요.')
-      return
-    }
-    drinkRunning.current = true
-    setDrinkBusy(true)
-    setDrinkError('')
-    const input: DrinkActionInput = pendingDrink.current ?? {
-      requestId: crypto.randomUUID(),
-      expectedGoalId: state.goalId,
-      day: state.day,
-      kind,
-      ...(kind === 'undo' ? { recordId: state.latestDrinkId! } : {})
-    }
-    pendingDrink.current = input
-    setPendingDrinkKind(kind)
-    try {
-      const response = await window.hanzanhae.recordDrinkAction(input)
-      if (response.ok) {
-        pendingDrink.current = null
-        setPendingDrinkKind(null)
-        await refresh()
-      } else if (response.code === 'STALE_STATE' || response.code === 'VALIDATION_ERROR') {
-        pendingDrink.current = null
-        setPendingDrinkKind(null)
-        await refresh()
-        setDrinkError('목표나 기록이 바뀌었어요. 다시 확인해 주세요.')
-      } else setDrinkError('횟수를 저장하지 못했어요. 같은 버튼을 눌러 다시 시도해 주세요.')
-    } catch {
-      setDrinkError('횟수를 저장하지 못했어요. 다시 시도해 주세요.')
-    } finally {
-      drinkRunning.current = false
-      setDrinkBusy(false)
-    }
-  }
+  const {
+    change: changeDrinkCount,
+    busy: drinkBusy,
+    error: drinkError,
+    pendingKind: pendingDrinkKind,
+    confirmation: drinkConfirmation,
+    dismissConfirmation: dismissDrinkConfirmation
+  } = useRecordDrink(state, refresh)
+  const [cupNotice, setCupNotice] = useState<RecordedCup | null>(null)
   const [watered, setWatered] = useState(false)
   const [waterPulse, setWaterPulse] = useState(0)
   useEffect(() => {
@@ -112,16 +77,25 @@ export default function Today({
     ...state.todayRecords.map((record) => ({ kind: 'cup' as const, record }))
   ].sort((a, b) => b.record.recordedAt.localeCompare(a.record.recordedAt))
   const latest = currentRecords[0]
+  const undoableCup =
+    cupNotice?.day === state.day && cupNotice.goalId === state.goalId && cupNotice.id === latest?.id
+      ? cupNotice
+      : null
 
-  async function cancelLatest(): Promise<void> {
-    if (!latest) return
+  async function recordTumbler(): Promise<void> {
+    const saved = await record()
+    if (saved) setCupNotice(saved)
+  }
+
+  async function cancelLatest(record = latest): Promise<void> {
+    if (!record) return
     setCancelNotice('')
     if (
       await cancel({
         kind: 'latest',
         expectedGoalId: state.goalId,
         day: state.day,
-        recordId: latest.id
+        recordId: record.id
       })
     )
       setCancelNotice('최근 텀블러 기록을 취소했어요.')
@@ -281,7 +255,7 @@ export default function Today({
                 <div className="today-primary-actions">
                   <button
                     className="drink"
-                    disabled={drinkBusy}
+                    aria-disabled={drinkBusy}
                     onClick={() => void changeDrinkCount('add')}
                   >
                     물 마신 횟수 추가
@@ -289,7 +263,7 @@ export default function Today({
                   <button
                     className="drink drink-outline"
                     disabled={busy || cancelBusy}
-                    onClick={() => void record()}
+                    onClick={() => void recordTumbler()}
                   >
                     <img src={drop} alt="" width="20" height="20" />
                     <span>텀블러 비우기</span> <small>+{cupMl}ml</small>
@@ -297,12 +271,27 @@ export default function Today({
                 </div>
               </div>
             </div>
+            <div className="cup-record-feedback">
+              <span className="water-status" role="status">
+                {undoableCup && `${format(undoableCup.amountMl)}ml를 기록했어요.`}
+              </span>
+              {undoableCup && (
+                <button
+                  type="button"
+                  className="plain-action"
+                  disabled={busy || cancelBusy || retryable}
+                  onClick={() => void cancelLatest(undoableCup)}
+                >
+                  되돌리기
+                </button>
+              )}
+            </div>
             {error && (
               <p className="water-error" role="alert">
                 {error}
               </p>
             )}
-            {drinkError && (
+            {drinkError && !drinkConfirmation && (
               <p className="water-error" role="alert">
                 {drinkError}
               </p>
@@ -354,6 +343,7 @@ export default function Today({
                 className="plain-action"
                 disabled={
                   busy ||
+                  drinkBusy ||
                   cancelBusy ||
                   retryable ||
                   (currentRecords.length === 0 && todayCount === 0)
@@ -429,6 +419,15 @@ export default function Today({
           </div>
         </div>
       </div>
+      {drinkConfirmation && (
+        <ConfirmDrinkDialog
+          reason={drinkConfirmation.reason}
+          busy={drinkBusy}
+          error={drinkError}
+          onDismiss={dismissDrinkConfirmation}
+          onConfirm={() => changeDrinkCount('add', drinkConfirmation.latestDrinkId)}
+        />
+      )}
       {clearSnapshot && (
         <ClearTodayDialog
           plantStage={state.plantStage}
