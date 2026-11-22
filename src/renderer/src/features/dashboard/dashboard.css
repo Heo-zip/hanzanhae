@@ -43,6 +43,13 @@
   --danger: #e5484d;
   --hill-a: #c9ecb2;
   --hill-b: #a9dd8c;
+  --hill-far: #ddf1cf;
+  /* 언덕 윗면 밝은 색, 아래쪽 그늘, 화분 바닥 그림자 */
+  --hill-a-top: #e2f7d2;
+  --hill-b-top: #c2eaa6;
+  --hill-shade: rgba(70, 120, 40, 0.16);
+  --hill-edge: 0 -1px 0 rgba(255, 255, 255, 0.35), 0 -6px 16px rgba(60, 110, 30, 0.12);
+  --pot-shadow: rgba(60, 100, 30, 0.32);
   --shadow: 0 1px 2px rgba(20, 30, 40, 0.03), 0 4px 14px rgba(20, 30, 40, 0.04);
 }
 /* ── 메인 컬러: 초록 ── */
@@ -51,30 +58,36 @@
   --brand-ink: #0e8a45;
   --brand-mid: #a3e2be;
   --brand-soft: #e5f7ec;
-  --sky-a: #f1fbf4;
-  --sky-b: #dcf4e4;
+  --sky-a: #e4f3fd;
+  --sky-b: #eefaf1;
 }
-/* macOS 화면 모드를 따라간다. 정원 창은 바탕화면 위에 떠 있어 밝은 색을 유지한다. */
+/* macOS 화면 모드를 따라간다. 다크는 밤하늘 남색과 맑은 초록 언덕. 정원 창은 밝은 색을 유지한다. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --page: #0e0f11;
-    --window: #17191b;
-    --card: #1f2224;
-    --card-sub: #282b2e;
-    --line: #2d3134;
-    --nav-on: #25282b;
-    --text: #edf1ef;
-    --text-sub: #a2aca7;
-    --text-muted: #74807a;
-    --hill-a: #2f4a2c;
-    --hill-b: #284124;
+    --page: #0f1013;
+    --window: #15161a;
+    --card: #1c1d22;
+    --card-sub: #24262c;
+    --line: #2c2e35;
+    --nav-on: #23252b;
+    --text: #f0f1f4;
+    --text-sub: #a9adb7;
+    --text-muted: #7b808b;
+    --hill-a: #1f6b45;
+    --hill-b: #18583a;
+    --hill-far: #1c4a3a;
+    --hill-a-top: #2b7d53;
+    --hill-b-top: #23714a;
+    --hill-shade: rgba(0, 0, 0, 0.22);
+    --hill-edge: 0 -1px 0 rgba(255, 255, 255, 0.06), 0 -6px 16px rgba(0, 0, 0, 0.28);
+    --pot-shadow: rgba(0, 0, 0, 0.45);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 22px rgba(0, 0, 0, 0.25);
 
     --brand-ink: #5fd896;
-    --brand-mid: #2c5a40;
-    --brand-soft: #1d3428;
-    --sky-a: #1c2621;
-    --sky-b: #1a2e23;
+    --brand-mid: #2a6a48;
+    --brand-soft: #1c3a2c;
+    --sky-a: #141d35;
+    --sky-b: #22335a;
   }
 }
 
@@ -213,6 +226,12 @@ button {
 }
 .nav:not(.on) img {
   filter: saturate(0.35) opacity(0.7);
+}
+@media (prefers-color-scheme: dark) {
+  /* 어두운 바탕에서 채도를 빼면 진흙색이 되어 밝기만 낮춘다 */
+  .nav:not(.on) img {
+    filter: saturate(0.85) brightness(0.8);
+  }
 }
 .nav:hover img {
   filter: none;
@@ -425,8 +444,27 @@ main {
   border-radius: 24px;
   min-height: 260px;
   padding: 36px 40px;
-  background: linear-gradient(180deg, var(--sky-a), var(--sky-b));
+  background:
+    radial-gradient(ellipse 52% 34% at 34% 118%, var(--hill-far) 99%, transparent 100%),
+    linear-gradient(180deg, var(--sky-a), var(--sky-b));
   border: 1px solid var(--line);
+}
+@media (prefers-color-scheme: dark) {
+  /* 밤하늘 별. 달은 화분 옆에 따로 그린다 */
+  .hero {
+    background:
+      radial-gradient(circle at 54% 16%, rgba(255, 255, 255, 0.85) 0 1.5px, transparent 2.5px),
+      radial-gradient(circle at 71% 12%, rgba(255, 255, 255, 0.6) 0 1px, transparent 2px),
+      radial-gradient(circle at 78% 26%, rgba(255, 255, 255, 0.75) 0 1.5px, transparent 2.5px),
+      radial-gradient(circle at 88% 14%, rgba(255, 255, 255, 0.55) 0 1px, transparent 2px),
+      radial-gradient(circle at 94% 34%, rgba(255, 255, 255, 0.7) 0 1.2px, transparent 2.2px),
+      radial-gradient(circle at 58% 44%, rgba(255, 255, 255, 0.45) 0 1px, transparent 2px),
+      radial-gradient(circle at 47% 30%, rgba(255, 255, 255, 0.5) 0 1px, transparent 2px),
+      radial-gradient(circle at 83% 8%, rgba(255, 255, 255, 0.9) 0 1.8px, transparent 3px),
+      radial-gradient(circle at 68% 48%, rgba(255, 255, 255, 0.4) 0 1px, transparent 2px),
+      radial-gradient(ellipse 52% 34% at 34% 118%, var(--hill-far) 99%, transparent 100%),
+      linear-gradient(180deg, var(--sky-a), var(--sky-b));
+  }
 }
 .hero::before,
 .hero::after {
@@ -434,19 +472,25 @@ main {
   position: absolute;
   border-radius: 50%;
 }
+/* 언덕: 윗면은 밝고 아래로 갈수록 진해지는 명암으로 2.5D 느낌을 준다 */
 .hero::before {
-  width: 760px;
-  height: 260px;
-  right: -160px;
-  bottom: -170px;
-  background: var(--hill-a);
+  width: 820px;
+  height: 250px;
+  right: -170px;
+  bottom: -165px;
+  background:
+    radial-gradient(ellipse 70% 40% at 50% 0%, var(--hill-a-top), transparent 100%),
+    linear-gradient(180deg, transparent 30%, var(--hill-shade)), var(--hill-a);
 }
 .hero::after {
-  width: 620px;
-  height: 240px;
-  right: -280px;
-  bottom: -170px;
-  background: var(--hill-b);
+  width: 660px;
+  height: 230px;
+  right: -300px;
+  bottom: -160px;
+  background:
+    radial-gradient(ellipse 70% 40% at 45% 0%, var(--hill-b-top), transparent 100%),
+    linear-gradient(180deg, transparent 30%, var(--hill-shade)), var(--hill-b);
+  box-shadow: var(--hill-edge);
 }
 .hero .msg {
   position: relative;
@@ -524,6 +568,45 @@ main {
   aspect-ratio: 1;
   max-height: 300px;
   z-index: 1;
+}
+/* 히어로 화분: 바닥이 언덕 위에 보이도록 띄우고, 바닥 그림자는 화분을 따라다니게 화분 칸에 그린다 */
+.hero .pot {
+  bottom: 22px;
+  height: 84%;
+  background: radial-gradient(ellipse 29% 5% at 50% 95%, var(--pot-shadow), transparent 100%);
+}
+/* 해: 화분 왼쪽 위. 동그라미와 짧은 빛살 8개 */
+.hero .pot::before,
+.hero .pot::after {
+  content: '';
+  position: absolute;
+  left: -44px;
+  top: 34px;
+  border-radius: 50%;
+  translate: -50% -50%;
+}
+.hero .pot::before {
+  width: 38px;
+  height: 38px;
+  background: radial-gradient(circle at 36% 34%, #ffe27a, #ffc53d 70%);
+}
+.hero .pot::after {
+  width: 72px;
+  height: 72px;
+  background: repeating-conic-gradient(from -3.5deg, #ffcb52 0 7deg, transparent 7deg 45deg);
+  mask: radial-gradient(circle, transparent 0 25px, #000 26.5px 33px, transparent 35px);
+}
+@media (prefers-color-scheme: dark) {
+  /* 밤에는 같은 자리에 초승달 */
+  .hero .pot::before {
+    width: 42px;
+    height: 42px;
+    background: #f6efc9;
+    mask: radial-gradient(circle at 71% 36%, transparent 0 19px, #000 20px);
+  }
+  .hero .pot::after {
+    display: none;
+  }
 }
 .pot img {
   width: 100%;
@@ -1018,6 +1101,25 @@ main {
   border-radius: 50%;
   transform: translateY(-3px);
 }
+@media (prefers-color-scheme: dark) {
+  /* 흰 유리는 어두운 바탕에서 회색 캔처럼 보여 어두운 유리로 바꾼다 */
+  .glass {
+    background: linear-gradient(
+      90deg,
+      rgba(120, 170, 210, 0.08),
+      rgba(170, 210, 240, 0.16) 40%,
+      rgba(120, 170, 210, 0.07)
+    );
+    border-color: #34444f;
+    box-shadow: inset 0 -6px 12px rgba(0, 0, 0, 0.25);
+  }
+  .glass i {
+    background: linear-gradient(180deg, #6cc2f5, #3a8fd6);
+  }
+  .glass i::before {
+    background: rgba(255, 255, 255, 0.3);
+  }
+}
 .cupday .day {
   font-size: 14px;
   color: var(--text-sub);
@@ -1365,6 +1467,15 @@ main {
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.6);
 }
+@media (prefers-color-scheme: dark) {
+  /* 밝은 파스텔 바탕화면이 눈부셔서 밤 바탕화면으로 */
+  .mini {
+    background: linear-gradient(160deg, #22304a, #2e2a47 60%, #3d2f33);
+  }
+  .mini .dock {
+    background: rgba(255, 255, 255, 0.14);
+  }
+}
 .mini img {
   position: absolute;
   width: 30%;
@@ -1652,10 +1763,17 @@ main {
   .hero .msg {
     max-width: none;
   }
-  .pot {
+  .pot,
+  .hero .pot {
     right: 50%;
     transform: translateX(50%);
     height: 180px;
+  }
+  /* 화분이 가운데로 오면 해·달이 글과 겹쳐 화분 오른쪽 위로 옮긴다 */
+  .hero .pot::before,
+  .hero .pot::after {
+    left: calc(100% + 56px);
+    top: 36px;
   }
 }
 /* 아주 좁은 창 */
