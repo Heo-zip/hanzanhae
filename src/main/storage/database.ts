@@ -15,6 +15,7 @@ import type {
   GardenSettings,
   ReminderSettings,
   DrinkActionInput,
+  DrinkConfirmation,
   DrinkRecord
 } from '../../shared/appState'
 import { validReminderSettings } from '../reminders/policy'
@@ -56,6 +57,11 @@ export function resetDatabaseFile(
 export class AlreadyConfiguredError extends Error {}
 export class InvalidSetupError extends Error {}
 export class StaleStateError extends Error {}
+export class DrinkConfirmationRequiredError extends Error {
+  constructor(readonly confirmation: DrinkConfirmation) {
+    super('마신 횟수를 추가하기 전에 확인이 필요해요')
+  }
+}
 export class NoRecordsError extends Error {}
 export class TotalBelowZeroError extends Error {}
 
@@ -71,6 +77,7 @@ const DRINK_GAIN = 6
 const CUP_GAIN = 15
 const CUP_GAIN_WITHOUT_CAMERA = 30
 const BUTTON_GAIN_COOLDOWN_MS = 5 * 60_000
+const DRINK_CONFIRM_WINDOW_MS = 3_000
 // 마신 횟수 1회의 성장점. 생기를 올린 기록만 성장에 넣어 버튼 연타로 자라지 않게 한다.
 // 하루 8회면 800점: 횟수만 쓰면 약 18일, 텀블러 1.5L와 함께면 약 6일에 꽃이 핀다.
 const DRINK_GROWTH = 100
@@ -755,7 +762,7 @@ export class AppDatabase {
   recordCup(
     input: RecordCupInput,
     { cameraActive = false }: { cameraActive?: boolean } = {}
-  ): { state: AppState; created: boolean } {
+  ): { state: AppState; created: boolean; record: WaterRecord } {
     if (
       !input ||
       typeof input.requestId !== 'string' ||
@@ -768,12 +775,18 @@ export class AppDatabase {
     this.db.exec('BEGIN IMMEDIATE')
     try {
       const previous = this.prepare(
-        'SELECT goal_id, day FROM water_records WHERE request_id = ?'
+        'SELECT id, goal_id, day, amount_ml, recorded_at FROM water_records WHERE request_id = ?'
       ).get(input.requestId)
-      let created = false
+      let record: WaterRecord
       if (previous) {
         if (Number(previous.goal_id) !== input.expectedGoalId || previous.day !== input.day)
           throw new InvalidSetupError()
+        record = {
+          id: Number(previous.id),
+          goalId: Number(previous.goal_id),
+          amountMl: Number(previous.amount_ml),
+          recordedAt: String(previous.recorded_at)
+        }
       } else {
         const state = this.readState()
         const now = this.now()
@@ -801,11 +814,16 @@ export class AppDatabase {
           inserted.lastInsertRowid,
           cameraActive ? CUP_GAIN : CUP_GAIN_WITHOUT_CAMERA
         )
-        created = true
+        record = {
+          id: Number(inserted.lastInsertRowid),
+          goalId: state.goalId,
+          amountMl: state.cupMl,
+          recordedAt: now.toISOString()
+        }
       }
       const state = this.readState()
       this.db.exec('COMMIT')
-      return { state, created }
+      return { state, created: !previous, record }
     } catch (error) {
       this.db.exec('ROLLBACK')
       throw error
@@ -818,6 +836,7 @@ export class AppDatabase {
     { recentCameraOnly = false }: { recentCameraOnly?: boolean } = {}
   ): { state: AppState; created: boolean } {
     const source = input?.source ?? 'button'
+    const manualAdd = input?.kind === 'add' && source === 'button'
     if (
       !input ||
       typeof input.requestId !== 'string' ||
@@ -828,6 +847,8 @@ export class AppDatabase {
       (input.kind !== 'add' && input.kind !== 'undo') ||
       (input.kind === 'undo' && !positive(input.recordId ?? 0)) ||
       (source !== 'button' && source !== 'camera') ||
+      (input.confirmedLatestDrinkId !== undefined &&
+        (!manualAdd || !positive(input.confirmedLatestDrinkId))) ||
       (recentCameraOnly && input.kind !== 'undo')
     )
       throw new InvalidSetupError()
@@ -848,15 +869,33 @@ export class AppDatabase {
         if (receipt.payload !== payload) throw new InvalidSetupError()
       } else {
         const state = this.readState()
+        const now = this.now()
         if (
           state.status !== 'ready' ||
           state.goalId !== input.expectedGoalId ||
           state.day !== input.day ||
-          today(this.now()) !== input.day
+          today(now) !== input.day
         )
           throw new StaleStateError()
         if (input.kind === 'add') {
-          const now = this.now()
+          if (manualAdd) {
+            const lastId = state.latestDrinkId
+            if (input.confirmedLatestDrinkId !== undefined) {
+              if (input.confirmedLatestDrinkId !== lastId) throw new StaleStateError()
+            } else if (lastId !== null) {
+              const recent = state.todayDrinks.filter(({ recordedAt }) => {
+                const elapsed = now.getTime() - Date.parse(recordedAt)
+                return elapsed >= 0 && elapsed <= DRINK_CONFIRM_WINDOW_MS
+              })
+              if (recent.some(({ source }) => source === 'camera'))
+                throw new DrinkConfirmationRequiredError({
+                  reason: 'camera',
+                  latestDrinkId: lastId
+                })
+              if (recent.length >= 2)
+                throw new DrinkConfirmationRequiredError({ reason: 'rapid', latestDrinkId: lastId })
+            }
+          }
           // 버튼은 마지막으로 생기를 올린 버튼 기록 뒤 5분이 지나야 다시 올린다. 카메라 감지는 제한이 없다.
           const cooling =
             source === 'button' &&
@@ -876,14 +915,14 @@ export class AppDatabase {
             ).get(input.recordId!)
             if (
               row?.source !== 'camera' ||
-              this.now().getTime() - Date.parse(String(row.recorded_at)) > CAMERA_UNDO_MS
+              now.getTime() - Date.parse(String(row.recorded_at)) > CAMERA_UNDO_MS
             )
               throw new StaleStateError()
           }
           this.revokeVitality('drink', input.recordId!)
           const changed = this.prepare(
             'UPDATE drink_actions SET cancelled_at = ? WHERE id = ? AND day = ? AND cancelled_at IS NULL'
-          ).run(this.now().toISOString(), input.recordId!, state.day)
+          ).run(now.toISOString(), input.recordId!, state.day)
           if (changed.changes !== 1) throw new StaleStateError()
         }
         this.prepare('INSERT INTO drink_action_receipts VALUES (?, ?)').run(

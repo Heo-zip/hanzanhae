@@ -1,5 +1,7 @@
 # 현재 작업 상태
 
+> 구현·자동 검증: [#64](https://github.com/Heo-zip/hanzanhae/issues/64). 수동 횟수 연타와 카메라 직후 추가를 저장 전에 확인하고, 텀블러 기록 후 실제 용량과 되돌리기를 표시한다. [검증 결과](features/drink-record-guards-REPORT.md)
+
 > 검토 완료: [#62](https://github.com/Heo-zip/hanzanhae/issues/62). 첫 배포의 카메라 감지 범위는 텀블러 일반 음용과 빨대 음용이다. 개선 전 사용자 실측 60회와 판정 변경을 기록했고, 사용자가 변경판의 대표 동작을 확인했다. 개선율 재측정은 후속이다. [실측 결과](features/camera-drink-detection-recognition-ERROR.md#개선-전-텀블러-실측--2026-11-21)
 
 > 진행: Windows·Linux 지원(`feature/cross-platform`). NSIS·AppImage·deb 빌드와 OS별 기능 분기·미지원 안내를 추가하고 자동 검사와 이 Mac에서의 설치 파일 생성을 확인했다. 실제 Windows·Linux 실행은 확인 불가로 남았다. [결과](features/cross-platform-REPORT.md)

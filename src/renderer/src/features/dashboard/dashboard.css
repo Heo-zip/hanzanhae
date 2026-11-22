@@ -1778,8 +1778,10 @@ html:not([data-platform='darwin']) .side .lights {
 button:disabled {
   cursor: not-allowed;
 }
-.drink:disabled {
+.drink:disabled,
+.drink[aria-disabled='true'] {
   opacity: 0.72;
+  cursor: not-allowed;
 }
 .goal-link {
   border: 0;
@@ -1930,6 +1932,15 @@ button:disabled {
   color: var(--brand-ink);
   font-size: 13px;
 }
+.cup-record-feedback {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 12px;
+}
+.cup-record-feedback:has(button) {
+  margin-top: 12px;
+}
 .cancel-retry {
   border: 0;
   background: transparent;
@@ -1955,6 +1966,19 @@ button:disabled {
 .confirm::backdrop {
   background: rgba(20, 28, 24, 0.36);
   backdrop-filter: blur(3px);
+}
+.drink-confirm:modal {
+  overscroll-behavior: contain;
+}
+.drink-confirm::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+.drink-confirm .lead {
+  margin-bottom: 0;
+}
+.drink-confirm .water-error {
+  margin-top: 8px;
 }
 .cf-body {
   padding: 28px 28px 24px;

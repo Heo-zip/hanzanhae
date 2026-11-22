@@ -13,6 +13,7 @@ import type {
   ReminderSettingsResult,
   ReminderTestResult,
   DrinkActionInput,
+  DrinkActionResult,
   LoginItemResult,
   ExportRecordsResult
 } from '../shared/appState'
@@ -44,7 +45,7 @@ declare global {
       completeSetup: (input: SetupInput) => Promise<AppResult>
       updateSettings: (input: SettingsInput) => Promise<AppResult>
       recordCup: (input: RecordCupInput) => Promise<RecordCupResult>
-      recordDrinkAction: (input: DrinkActionInput) => Promise<AppResult>
+      recordDrinkAction: (input: DrinkActionInput) => Promise<DrinkActionResult>
       cancelWater: (input: CancelWaterInput) => Promise<CancelWaterResult>
       exportRecords: () => Promise<ExportRecordsResult>
       resetData: () => Promise<AppResult>

@@ -21,7 +21,8 @@ loaded.filename = sourcePath
 loaded._compile(compile(sourcePath), sourcePath)
 if (previous) Module._extensions['.ts'] = previous
 else delete Module._extensions['.ts']
-const { AppDatabase, StaleStateError, InvalidSetupError } = loaded.exports
+const { AppDatabase, StaleStateError, InvalidSetupError, DrinkConfirmationRequiredError } =
+  loaded.exports
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function withDatabase(run) {
@@ -38,6 +39,118 @@ function withDatabase(run) {
     rmSync(dir, { recursive: true, force: true })
   }
 }
+
+test('3초 안의 세 번째 수동 기록은 확인 전까지 저장하지 않고 확인을 재전송해도 한 번만 더한다', () => {
+  withDatabase((db, _path, setTime) => {
+    const state = db.completeSetup({ requestId: 'setup', goalCount: 8, cupMl: 500 })
+    const add = { kind: 'add', expectedGoalId: state.goalId, day: state.day }
+    db.recordDrinkAction({ ...add, requestId: 'first' })
+    setTime('2026-11-15T03:00:01Z')
+    const second = db.recordDrinkAction({ ...add, requestId: 'second' }).state
+    setTime('2026-11-15T03:00:03Z')
+    const third = { ...add, requestId: 'third' }
+    assert.throws(
+      () => db.recordDrinkAction(third),
+      (error) =>
+        error instanceof DrinkConfirmationRequiredError &&
+        error.confirmation.reason === 'rapid' &&
+        error.confirmation.latestDrinkId === second.latestDrinkId
+    )
+    assert.equal(db.readState().todayCount, 2)
+    const confirmed = { ...third, confirmedLatestDrinkId: second.latestDrinkId }
+    assert.equal(db.recordDrinkAction(confirmed).state.todayCount, 3)
+    assert.equal(db.recordDrinkAction(confirmed).created, false)
+    assert.equal(db.readState().todayCount, 3)
+    setTime('2026-11-15T03:00:04.001Z')
+    assert.equal(db.recordDrinkAction({ ...add, requestId: 'after-window' }).state.todayCount, 4)
+  })
+})
+
+test('카메라 직후 수동 기록은 확인하고, 더 최근 카메라 기록이 생기면 이전 확인을 거절한다', () => {
+  withDatabase((db, _path, setTime) => {
+    const state = db.completeSetup({ requestId: 'setup', goalCount: 8, cupMl: 500 })
+    const add = { kind: 'add', expectedGoalId: state.goalId, day: state.day }
+    const auto = db.recordDrinkAction({ ...add, requestId: 'auto', source: 'camera' }).state
+    const manual = { ...add, requestId: 'manual' }
+    assert.throws(
+      () => db.recordDrinkAction(manual),
+      (error) =>
+        error instanceof DrinkConfirmationRequiredError &&
+        error.confirmation.reason === 'camera' &&
+        error.confirmation.latestDrinkId === auto.latestDrinkId
+    )
+    assert.equal(
+      db.recordDrinkAction({ ...add, requestId: 'auto-next', source: 'camera' }).state.todayCount,
+      2
+    )
+    assert.throws(
+      () => db.recordDrinkAction({ ...manual, confirmedLatestDrinkId: auto.latestDrinkId }),
+      StaleStateError
+    )
+    assert.throws(
+      () =>
+        db.recordDrinkAction({
+          ...manual,
+          source: 'camera',
+          confirmedLatestDrinkId: auto.latestDrinkId
+        }),
+      InvalidSetupError
+    )
+    setTime('2026-11-15T03:00:03.001Z')
+    assert.equal(db.recordDrinkAction(manual).state.todayCount, 3)
+  })
+})
+
+test('수동 추가를 확인하는 사이에 목표나 한국 날짜가 바뀌면 저장하지 않는다', () => {
+  withDatabase((db, _path, setTime) => {
+    setTime('2026-11-15T14:59:58Z')
+    let state = db.completeSetup({ requestId: 'setup', goalCount: 8, cupMl: 500 })
+    const add = { kind: 'add', expectedGoalId: state.goalId, day: state.day }
+    db.recordDrinkAction({ ...add, requestId: 'auto', source: 'camera' })
+    const manual = { ...add, requestId: 'manual' }
+    assert.throws(() => db.recordDrinkAction(manual), DrinkConfirmationRequiredError)
+    const oldConfirmation = { ...manual, confirmedLatestDrinkId: db.readState().latestDrinkId }
+    state = db.updateSettings({
+      requestId: 'change-goal',
+      kind: 'goal',
+      day: state.day,
+      expectedGoalId: state.goalId,
+      goalCount: 9,
+      expectedTodayMl: 0,
+      todayMl: 0
+    })
+    assert.throws(() => db.recordDrinkAction(oldConfirmation), StaleStateError)
+    const newGoal = { ...manual, expectedGoalId: state.goalId }
+    assert.throws(() => db.recordDrinkAction(newGoal), DrinkConfirmationRequiredError)
+    setTime('2026-11-15T15:00:01Z')
+    assert.throws(
+      () =>
+        db.recordDrinkAction({
+          ...newGoal,
+          confirmedLatestDrinkId: oldConfirmation.confirmedLatestDrinkId
+        }),
+      StaleStateError
+    )
+    assert.equal(db.readState().todayCount, 0)
+  })
+})
+
+test('텀블러 요청을 다시 보내면 이후 다른 양을 저장했어도 최초 기록의 ID와 용량을 돌려준다', () => {
+  withDatabase((db) => {
+    const state = db.completeSetup({ requestId: 'setup', goalCount: 8, cupMl: 500 })
+    const firstInput = { requestId: 'first', expectedGoalId: state.goalId, day: state.day }
+    const first = db.recordCup(firstInput)
+    db.updateSettings({ requestId: 'cup-size', kind: 'cup', cupMl: 250 })
+    const second = db.recordCup({ ...firstInput, requestId: 'second' })
+    const replay = db.recordCup(firstInput)
+    assert.equal(first.record.amountMl, 500)
+    assert.equal(second.record.amountMl, 250)
+    assert.notEqual(first.record.id, second.record.id)
+    assert.equal(replay.created, false)
+    assert.deepEqual(replay.record, first.record)
+    assert.equal(replay.state.todayMl, 750)
+  })
+})
 
 test('물 마신 횟수와 텀블러 용량은 각각 성장에 더해지고 각각 취소된다', () => {
   withDatabase((db) => {

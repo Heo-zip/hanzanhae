@@ -1,5 +1,7 @@
 # 다음 작업
 
+> 검토: [#64](https://github.com/Heo-zip/hanzanhae/issues/64) 수동 추가 확인과 텀블러 되돌리기. 자동 검증 완료. 실제 macOS 화면에서 버튼 연타·키보드 확인·텀블러 되돌리기를 사용자가 확인하면 병합한다. [검증 결과](features/drink-record-guards-REPORT.md)
+
 > 다음: 사용자가 [#62 텀블러·빨대 판정 개선](https://github.com/Heo-zip/hanzanhae/issues/62)의 대표 동작을 확인해 이 판정으로 첫 배포를 준비한다. 서명·공증한 배포 빌드에서 설치·카메라 권한·기록 흐름을 확인한다. 후속 [정량 재측정](features/camera-drink-detection-recognition-ERROR.md#개선-전-텀블러-실측--2026-11-21)에서는 단계 표시 오류와 실제 오기록을 분리한다.
 
 > 진행: Windows·Linux 지원(`feature/cross-platform`). NSIS·AppImage·deb 빌드와 OS별 기능 분기·미지원 안내를 추가하고 자동 검사와 이 Mac에서의 설치 파일 생성을 확인했다. 실제 Windows·Linux 실행은 확인 불가로 남았다. [결과](features/cross-platform-REPORT.md)
