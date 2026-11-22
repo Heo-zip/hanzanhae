@@ -1,0 +1,82 @@
+# v로 시작하는 태그를 올리면 macOS(Apple Silicon) 앱을 서명·공증해 배포 저장소에 올린다.
+name: macOS 배포
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-mac
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: 태그와 앱 버전 확인
+        run: |
+          VERSION="v$(node -p "require('./package.json').version")"
+          if [ "$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "태그($GITHUB_REF_NAME)와 package.json 버전($VERSION)이 달라요."
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - name: 린트·타입 검사·빌드
+        run: |
+          npm run lint
+          npm run build
+
+      - name: 테스트
+        run: |
+          npm run test:storage
+          npm run test:camera
+          npm run test:position
+          npm run test:reminders
+          npm run test:update
+          npm run test:platform
+
+      - name: 서명·공증 빌드
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERTIFICATE_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx electron-builder --mac --arm64 --publish never
+
+      - name: 서명·공증 확인
+        run: |
+          APP="$(ls -d dist/mac-arm64/*.app)"
+          node scripts/check-mac-bundle.mjs "$APP"
+          codesign --verify --deep --strict "$APP"
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute -vv "$APP"
+
+      # 초안이 아닌 정식 릴리스로 올려야 랜딩의 latest 다운로드 주소와 자동 업데이트가 새 버전을 찾는다.
+      - name: 배포 저장소에 릴리스 올리기
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo Heo-zip/hanzanhae-releases \
+            --title "한잔해 $GITHUB_REF_NAME" \
+            --notes "macOS(Apple Silicon)용 한잔해 $GITHUB_REF_NAME 입니다." \
+            dist/hanzanhae-mac-arm64.dmg \
+            dist/hanzanhae-mac-arm64.dmg.blockmap \
+            dist/hanzanhae-*-mac-arm64.zip \
+            dist/hanzanhae-*-mac-arm64.zip.blockmap \
+            dist/latest-mac.yml
