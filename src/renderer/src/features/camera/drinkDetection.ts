@@ -8,8 +8,7 @@ export function distanceToBox(point: Point, box: Box): number {
 }
 
 // ── 고개·손목 단계 판정 ──
-// 마시는 순간 병과 손이 가려져도 고개를 젖히는 움직임은 보인다는 가정을 시험한다.
-// 아래 값은 모두 실측 전 임시값이며 후보 수만 보여주고 기록하지 않는다.
+// 고개와 손의 움직임을 함께 본다. 임계값은 실제 카메라에서 다시 조정한다.
 // 빠르게 마실 때도 잡히도록 12°·600ms에서 낮췄다(2026-11-16 사용자 확인).
 const SIP_LIFT_DEGREES = 8
 // 자세 모델의 (귀 높이 − 코 높이) ÷ 어깨 너비가 평소보다 이만큼 커지면 젖힌 것으로 본다.
@@ -21,10 +20,8 @@ const SIP_LOST_MS = 1500
 const SIP_MAX_MS = 20000
 const SIP_COOLDOWN_MS = 5000
 const HOLD_MEMORY_MS = 6000
-// 빠르게 들어 마시면 드는 순간 용기를 놓치므로, 내린 뒤 이 시간 안에 용기가 보여도 인정한다.
-// 카메라를 정면으로 보고 병을 들면 병 바닥만 보여 마시는 동안 용기를 못 찾는다. 다 마시고 내려놓을 때
-// 병이 보이는 경우가 많아 3초로 늘렸다(2026-11-17 사용자 확인).
-const CONTAINER_GRACE_MS = 3000
+const WRIST_REFERENCE_MS = 1500
+const WRIST_TURN_COS = Math.cos((18 * Math.PI) / 180)
 // 손이 닿지 않은 채 보인 상자를 '제자리 용기'로 기억하는 시간과, 같은 자리로 볼 겹침 비율(IoU).
 const REST_MEMORY_MS = 10000
 const REST_OVERLAP = 0.3
@@ -34,10 +31,11 @@ const PICKUP_EMPTY_MS = 600
 const PICKUP_WINDOW_MS = 4000
 // 입 모양 측정값의 최고값을 보여줄 최근 시간
 const MOUTH_PEAK_MS = 3000
-// 빨대로 마실 때: 손이 입 근처인 채 입술을 이만큼 오므린 상태가 이 시간 이어지면 마시는 중으로 본다.
-// 고개를 젖히지 않아도 된다. 실측 전 임시값이며 측정 줄의 '입 오므림' 값과 비교해 조정한다.
+// 입을 다물고 있어도 오므림 점수가 높을 수 있어 입 근처에서 최근 입술 틈이 보여야 한다.
 const STRAW_PUCKER = 0.45
 const STRAW_HOLD_MS = 500
+const STRAW_LIP_GAP = 0.035
+const STRAW_LIP_GAP_MEMORY_MS = 1000
 // 손 주변 확대 영역의 한 변(어깨 너비의 배수)과, 어깨 아래 얼마까지를 '든 손'으로 볼지(어깨 너비의 배수).
 const ZOOM_SIZE = 1.2
 const RAISED_BELOW_SHOULDER = 1
@@ -78,22 +76,33 @@ export function headPitchUp(matrix: ArrayLike<number>): number | null {
   return (Math.asin(Math.max(-1, Math.min(1, y))) * 180) / Math.PI
 }
 
-/** 손 끝·손목 중 입에 가장 가까운 거리를 얼굴 높이 단위로 바꿔 입 근처인지 본다. 모르면 null이다. */
+/** 얼굴 높이를 기준으로 입 근처인지 본다. 손·입의 깊이는 같은 자세 모델 값끼리만 비교한다. */
 export function isHandAtMouth(
   mouth: Point | null,
   faceHeight: number,
-  handPoints: Point[],
-  frameAspect: number
+  handPoints: (Point & { z?: number })[],
+  frameAspect: number,
+  mouthDepth?: number
 ): boolean | null {
   if (!mouth || faceHeight <= 0 || !handPoints.length) return null
-  const nearest = Math.min(
-    ...handPoints.map((point) => Math.hypot((point.x - mouth.x) * frameAspect, point.y - mouth.y))
+  return handPoints.some(
+    ({ x, y, z }) =>
+      y >= mouth.y - faceHeight * 0.35 &&
+      (mouthDepth === undefined ||
+        z === undefined ||
+        (z - mouthDepth) * frameAspect <= faceHeight * 0.3) &&
+      Math.hypot((x - mouth.x) * frameAspect, y - mouth.y) <= faceHeight
   )
-  return nearest / faceHeight <= 1
 }
 
 /** 들었다고 본 근거. 화면 전체에서 닿음 / 손 주변 확대에서 찾음 / 가려지기 직전 상자 / 입에 닿음 */
 export type HoldSource = 'touch' | 'zoom' | 'pickup' | 'mouth'
+export type HandSide = 0 | 1
+export type HandPoint = PoseMark & { side: HandSide }
+const HAND_MARKS = [
+  [15, 17, 19, 21],
+  [16, 18, 20, 22]
+] as const
 
 function overlap(a: Box, b: Box): number {
   const width = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)
@@ -119,55 +128,89 @@ function overlap(a: Box, b: Box): number {
 export class ContainerHold {
   private heldAt = -Infinity
   private lastSource: HoldSource | null = null
+  private lastHand: HandSide | null = null
+  private lastBox: Box | null = null
   private rest: { box: Box; at: number }[] = []
-  private grab: { box: Box; at: number; emptySince: number | null } | null = null
+  private grab: { box: Box; hand: HandSide; at: number; emptySince: number | null } | null = null
 
   get source(): HoldSource | null {
     return this.lastSource
   }
 
+  get hand(): HandSide | null {
+    return this.lastHand
+  }
+
   observe(
-    handPoints: Point[],
+    handPoints: HandPoint[],
     boxes: Box[],
     now: number,
     mouth: Point | null = null,
     zoomBoxes: Box[] = [],
-    handRaised = false
+    raisedHands: HandSide[] = []
   ): boolean {
-    const near = (box: Box): boolean =>
-      handPoints.some((point) => distanceToBox(point, box) <= 0.05)
+    const nearestHand = (box: Box, limit = 0.05): HandSide | null => {
+      let hand: HandSide | null = null
+      let nearest = limit
+      for (const point of handPoints) {
+        const distance = distanceToBox(point, box)
+        if (
+          distance > nearest ||
+          (distance === nearest && hand !== null && point.side !== this.lastHand)
+        )
+          continue
+        hand = point.side
+        nearest = distance
+      }
+      return hand
+    }
     this.rest = this.rest.filter((item) => now - item.at <= REST_MEMORY_MS)
     const restSpot = (box: Box): { box: Box; at: number } | undefined =>
       this.rest.find((item) => overlap(item.box, box) >= REST_OVERLAP)
     const moving = (box: Box): boolean => restSpot(box) === undefined
 
-    let found: HoldSource | null = boxes.some((box) => near(box) && moving(box))
-      ? 'touch'
-      : zoomBoxes.some((box) => near(box) && moving(box))
-        ? 'zoom'
-        : mouth !== null &&
-            [...boxes, ...zoomBoxes].some((box) => distanceToBox(mouth, box) <= 0.05 && moving(box))
-          ? 'mouth'
-          : null
+    const touch = boxes.find((box) => moving(box) && nearestHand(box) !== null)
+    const zoom = zoomBoxes.find((box) => moving(box) && nearestHand(box) !== null)
+    const atMouth =
+      mouth &&
+      [...boxes, ...zoomBoxes].find((box) => moving(box) && distanceToBox(mouth, box) <= 0.05)
+    const foundBox = touch ?? zoom ?? atMouth ?? null
+    let found: HoldSource | null = touch ? 'touch' : zoom ? 'zoom' : atMouth ? 'mouth' : null
+    let foundHand = foundBox ? nearestHand(foundBox, found === 'mouth' ? 0.12 : 0.05) : null
+    if (
+      foundBox &&
+      foundHand === null &&
+      this.lastBox &&
+      overlap(foundBox, this.lastBox) >= REST_OVERLAP
+    )
+      foundHand = this.lastHand
 
     // 제자리 용기에 손이 닿으면 집으려는 것일 수 있으니 그 자리를 지켜본다.
-    const touchedSpot = [...boxes, ...zoomBoxes].map(restSpot).find((spot, index) => {
-      const box = [...boxes, ...zoomBoxes][index]
-      return spot !== undefined && near(box)
-    })
-    if (touchedSpot && !this.grab) this.grab = { box: touchedSpot.box, at: now, emptySince: null }
+    if (!this.grab) {
+      for (const box of [...boxes, ...zoomBoxes]) {
+        const spot = restSpot(box)
+        const hand = nearestHand(box)
+        if (spot && hand !== null) {
+          this.grab = { box: spot.box, hand, at: now, emptySince: null }
+          break
+        }
+      }
+    }
     if (this.grab) {
       const stillThere = [...boxes, ...zoomBoxes].some(
         (box) => overlap(box, this.grab!.box) >= REST_OVERLAP
       )
-      const handOnSpot = near(this.grab.box)
+      const handOnSpot = nearestHand(this.grab.box) === this.grab.hand
       if (stillThere && !handOnSpot) {
         // 손이 떠났는데 용기가 그대로 있으면 들지 않은 것이다.
         this.grab = null
-      } else if (!stillThere && handRaised) {
+      } else if (!stillThere && raisedHands.includes(this.grab.hand)) {
         this.grab.emptySince ??= now
         if (now - this.grab.emptySince >= PICKUP_EMPTY_MS) {
-          found ??= 'pickup'
+          if (!found) {
+            found = 'pickup'
+            foundHand = this.grab.hand
+          }
           this.rest = this.rest.filter((item) => item.box !== this.grab!.box)
           this.grab = null
         }
@@ -177,7 +220,8 @@ export class ContainerHold {
 
     // 손이 닿지 않은 상자는 제자리 용기로 기억한다. 같은 자리면 위치·시각만 갱신한다.
     for (const box of [...boxes, ...zoomBoxes]) {
-      if (near(box) || (mouth !== null && distanceToBox(mouth, box) <= 0.05)) continue
+      if (nearestHand(box) !== null || (mouth !== null && distanceToBox(mouth, box) <= 0.05))
+        continue
       const spot = restSpot(box)
       if (spot) {
         spot.box = box
@@ -189,9 +233,15 @@ export class ContainerHold {
     if (found) {
       this.heldAt = now
       this.lastSource = found
+      this.lastHand = foundHand
+      this.lastBox = foundBox
     }
     const held = now - this.heldAt <= HOLD_MEMORY_MS
-    if (!held) this.lastSource = null
+    if (!held) {
+      this.lastSource = null
+      this.lastHand = null
+      this.lastBox = null
+    }
     return held
   }
 }
@@ -200,7 +250,10 @@ export class ContainerHold {
  * 가슴 높이 이상으로 올라온 손마다 주변을 정사각형(화면 비율 반영)으로 잡는다.
  * 작고 가려진 용기를 크게 보고 다시 찾기 위한 영역이며, 어깨가 둘 다 보여야 만든다.
  */
-export function handZoomRegions(marks: PoseMark[], frameAspect: number): Box[] {
+export function handZoomRegions(
+  marks: PoseMark[],
+  frameAspect: number
+): (Box & { side: HandSide })[] {
   const seen = (index: number): PoseMark | null => {
     const mark = marks[index]
     return mark && (mark.visibility ?? 0) >= 0.5 ? mark : null
@@ -214,18 +267,15 @@ export function handZoomRegions(marks: PoseMark[], frameAspect: number): Box[] {
   // 높이 기준 한 변. 너비는 화면 비율만큼 줄여 실제 정사각형이 되게 한다.
   const height = Math.min(1, scale * ZOOM_SIZE)
   const width = Math.min(1, height / frameAspect)
-  const regions: Box[] = []
-  // 왼손 15·17·19·21, 오른손 16·18·20·22
-  for (const indexes of [
-    [15, 17, 19, 21],
-    [16, 18, 20, 22]
-  ]) {
-    const points = indexes.map(seen).filter((mark): mark is PoseMark => mark !== null)
+  const regions: (Box & { side: HandSide })[] = []
+  for (const side of [0, 1] as const) {
+    const points = HAND_MARKS[side].map(seen).filter((mark): mark is PoseMark => mark !== null)
     if (!points.length) continue
     const x = points.reduce((sum, point) => sum + point.x, 0) / points.length
     const y = points.reduce((sum, point) => sum + point.y, 0) / points.length
     if (y > shoulderY + scale * RAISED_BELOW_SHOULDER) continue
     regions.push({
+      side,
       x: Math.min(Math.max(0, x - width / 2), 1 - width),
       y: Math.min(Math.max(0, y - height / 2), 1 - height),
       width,
@@ -235,8 +285,43 @@ export function handZoomRegions(marks: PoseMark[], frameAspect: number): Box[] {
   return regions
 }
 
-export type PoseMark = Point & { visibility?: number }
-export type PoseHead = { pitch: number | null; mouth: Point | null; scale: number }
+export type PoseMark = Point & { visibility?: number; z?: number }
+type Direction = Point & { z: number }
+export type PoseHead = {
+  pitch: number | null
+  mouth: (Point & { z?: number }) | null
+  scale: number
+}
+
+export function poseHands(marks: PoseMark[]): HandPoint[] {
+  return ([0, 1] as const).flatMap((side) =>
+    HAND_MARKS[side].flatMap((index) => {
+      const mark = marks[index]
+      return mark && (mark.visibility ?? 0) >= 0.5 ? [{ ...mark, side }] : []
+    })
+  )
+}
+
+/** 추정 3D 좌표에서 손목과 두 손가락 사이의 방향을 구한다. */
+export function wristDirection(
+  marks: (Direction & { visibility?: number })[],
+  side: HandSide
+): Direction | null {
+  const [wrist, pinky, index] = HAND_MARKS[side].map((id) => marks[id])
+  if (
+    !wrist ||
+    !pinky ||
+    !index ||
+    [wrist, pinky, index].some((mark) => (mark.visibility ?? 0) < 0.5)
+  )
+    return null
+  const x = (pinky.x + index.x) / 2 - wrist.x
+  const y = (pinky.y + index.y) / 2 - wrist.y
+  const z = (pinky.z + index.z) / 2 - wrist.z
+  const length = Math.hypot(x, y, z)
+  if (!Number.isFinite(length) || length < 0.025) return null
+  return { x: x / length, y: y / length, z: z / length }
+}
 
 /**
  * 얼굴 모델이 얼굴을 놓쳤을 때 쓰는 자세 모델의 머리 정보다. 어깨가 둘 다 보여야 한다.
@@ -259,8 +344,17 @@ export function poseHead(marks: PoseMark[], frameAspect: number): PoseHead | nul
       ? (ears.reduce((sum, ear) => sum + ear.y, 0) / ears.length - nose.y) / scale
       : null
   const lip = [seen(9), seen(10)]
+  const [leftLip, rightLip] = lip
   const mouth =
-    lip[0] && lip[1] ? { x: (lip[0].x + lip[1].x) / 2, y: (lip[0].y + lip[1].y) / 2 } : null
+    leftLip && rightLip
+      ? {
+          x: (leftLip.x + rightLip.x) / 2,
+          y: (leftLip.y + rightLip.y) / 2,
+          ...(leftLip.z !== undefined && rightLip.z !== undefined
+            ? { z: (leftLip.z + rightLip.z) / 2 }
+            : {})
+        }
+      : null
   return { pitch, mouth, scale }
 }
 
@@ -274,7 +368,8 @@ export class FaceCover {
       return false
     }
     if (!this.last || now - this.last.at > FACE_MEMORY_MS) return false
-    const area = this.last.box
+    const box = this.last.box
+    const area = { ...box, y: box.y + box.height * 0.45, height: box.height * 0.55 }
     return (
       handPoints.some((point) => distanceToBox(point, area) <= area.height * 0.3) ||
       boxes.some(
@@ -297,8 +392,10 @@ export type SipFrame = {
   covered?: boolean
   /** 손이 입 근처인지. 입이나 손을 못 찾으면 null */
   handAtMouth: boolean | null
-  /** 최근 몇 초 안에 용기를 잡은 손이 있었는지 */
-  containerHeld: boolean
+  /** 최근에 용기를 잡은 손. 특정하지 못하면 null이다. */
+  hand: HandSide | null
+  wrist?: Direction | null
+  lipGap?: number | null
   /** 얼굴 모델의 입 모양. 빨대로 마시는지 볼 때 쓴다. 얼굴을 못 찾으면 null */
   mouth?: MouthShape | null
 }
@@ -317,8 +414,8 @@ export type SipResult = {
 }
 
 /**
- * 손이 입으로 옴 → 평소보다 고개를 젖힌 채 유지 → 손을 내림을 한 번의 후보로 센다.
- * 용기는 그 과정 중 한 번이라도(또는 내린 직후 잠시 안에) 보이면 된다.
+ * 용기를 든 손이 입으로 옴 → 음용 자세 유지 → 같은 손을 내림을 한 번으로 센다.
+ * 가까이 가기 전에 연결한 손으로 시작해 내리는 순간까지 같은 손만 추적한다.
  * 평소 각도는 손이 입 근처가 아닐 때의 중앙값이라 카메라 높이에 따라 달라지지 않는다.
  */
 export class SipDetector {
@@ -330,24 +427,28 @@ export class SipDetector {
   private lastFired = -Infinity
   private neutral: number[] = []
   private poseNeutral: number[] = []
-  private sawContainer = false
-  private graceUntil = -Infinity
+  private hand: HandSide | null = null
+  private wristReference: { hand: HandSide; direction: Direction; at: number } | null = null
+  private startWrist: Direction | null = null
+  private wristTurned = false
   private puckerSince: number | null = null
+  private lipGapAt = -Infinity
   private byStraw = false
 
   observe(frame: SipFrame, now: number): SipResult {
-    const { pitch, handAtMouth, containerHeld } = frame
+    const { pitch, handAtMouth, hand, wrist } = frame
     const posePitch = frame.posePitch ?? null
     const covered = frame.covered ?? false
     if (this.phase === 'idle' && handAtMouth !== true) {
       if (pitch !== null) this.neutral = [...this.neutral.slice(-19), pitch]
       if (posePitch !== null) this.poseNeutral = [...this.poseNeutral.slice(-19), posePitch]
+      if (hand !== null && wrist) this.wristReference = { hand, direction: wrist, at: now }
     }
     const baseline = this.neutral.length >= 5 ? median(this.neutral) : null
     const poseBaseline = this.poseNeutral.length >= 5 ? median(this.poseNeutral) : null
     const lift = pitch !== null && baseline !== null ? pitch - baseline : null
     const poseLift = posePitch !== null && poseBaseline !== null ? posePitch - poseBaseline : null
-    // 얼굴 모델 → 자세 모델 → 가림 순서로 고개를 젖혔는지 본다. 셋 다 모르면 null이다.
+    // 얼굴 모델이 끊기면 입 주변 가림을 먼저 확인하고 자세 모델의 값으로 보완한다.
     const source: HeadSource =
       lift !== null ? 'face' : covered ? 'covered' : poseLift !== null ? 'pose' : 'none'
     const tilted =
@@ -368,44 +469,54 @@ export class SipDetector {
       straw: this.phase !== 'idle' && this.byStraw
     })
 
-    const fire = (): boolean => {
-      if (now - this.lastFired < SIP_COOLDOWN_MS) return false
-      this.lastFired = now
-      return true
-    }
-
     if (this.phase === 'idle') {
-      // 마신 동작은 끝났지만 용기를 못 봤던 경우, 내린 직후 용기가 보이면 센다.
-      if (now <= this.graceUntil && containerHeld) {
-        this.graceUntil = -Infinity
-        fired = fire()
-        return result()
-      }
-      if (handAtMouth === true && (baseline !== null || poseBaseline !== null)) {
+      if (hand !== null && handAtMouth === true && (baseline !== null || poseBaseline !== null)) {
         this.phase = 'approach'
+        this.hand = hand
         this.startedAt = now
         this.lastAtMouth = now
         this.awaySince = null
         this.tiltSince = null
-        this.sawContainer = containerHeld
-        this.graceUntil = -Infinity
+        const reference = this.wristReference
+        this.startWrist =
+          reference && reference.hand === hand && now - reference.at <= WRIST_REFERENCE_MS
+            ? reference.direction
+            : (wrist ?? null)
+        this.wristTurned = false
         this.puckerSince = null
+        this.lipGapAt = (frame.lipGap ?? 0) >= STRAW_LIP_GAP ? now : -Infinity
         this.byStraw = false
       }
       return result()
     }
-    if (containerHeld) this.sawContainer = true
+    if (hand !== this.hand) {
+      this.phase = 'idle'
+      return result()
+    }
 
-    if (tilted === true) {
+    if (handAtMouth === true && wrist) {
+      this.startWrist ??= wrist
+      const start = this.startWrist
+      const alignment = start.x * wrist.x + start.y * wrist.y + start.z * wrist.z
+      if (alignment <= WRIST_TURN_COS) this.wristTurned = true
+    }
+
+    // 같은 손이나 용기가 입 부근을 가리는 정면 음용은 손 방향 추정이 끊겨도 이어 간다.
+    if (tilted === true && (this.wristTurned || covered) && handAtMouth !== false) {
       this.tiltSince ??= now
       if (now - this.tiltSince >= SIP_HOLD_MS) this.phase = 'sipping'
-    } else if (tilted === false) this.tiltSince = null
+    } else if (tilted === false || handAtMouth === false) this.tiltSince = null
 
-    // 빨대: 고개를 젖히지 않고 손을 입에 댄 채 입술을 오므리고 있으면 마시는 중으로 본다.
+    // 빨대에 입술을 밀착하기 직전에 열린 경우도 같은 동작으로 본다.
+    if (handAtMouth === true && (frame.lipGap ?? 0) >= STRAW_LIP_GAP) this.lipGapAt = now
     const puckered = handAtMouth === true && (frame.mouth?.pucker ?? 0) >= STRAW_PUCKER
     if (puckered) {
       this.puckerSince ??= now
-      if (now - this.puckerSince >= STRAW_HOLD_MS && this.phase !== 'sipping') {
+      if (
+        now - this.lipGapAt <= STRAW_LIP_GAP_MEMORY_MS &&
+        now - this.puckerSince >= STRAW_HOLD_MS &&
+        this.phase !== 'sipping'
+      ) {
         this.phase = 'sipping'
         this.byStraw = true
       }
@@ -417,9 +528,9 @@ export class SipDetector {
     } else if (handAtMouth === false) {
       this.awaySince ??= now
       if (now - this.awaySince >= SIP_AWAY_MS) {
-        if (this.phase === 'sipping') {
-          if (this.sawContainer) fired = fire()
-          else this.graceUntil = now + CONTAINER_GRACE_MS
+        if (this.phase === 'sipping' && now - this.lastFired >= SIP_COOLDOWN_MS) {
+          this.lastFired = now
+          fired = true
         }
         this.phase = 'idle'
       }

@@ -1,5 +1,7 @@
 # 다음 작업
 
+> 다음: 사용자가 [#62 텀블러·빨대 판정 개선](https://github.com/Heo-zip/hanzanhae/issues/62)의 대표 동작을 확인해 이 판정으로 첫 배포를 준비한다. 서명·공증한 배포 빌드에서 설치·카메라 권한·기록 흐름을 확인한다. 후속 [정량 재측정](features/camera-drink-detection-recognition-ERROR.md#개선-전-텀블러-실측--2026-11-21)에서는 단계 표시 오류와 실제 오기록을 분리한다.
+
 > 진행: Windows·Linux 지원(`feature/cross-platform`). NSIS·AppImage·deb 빌드와 OS별 기능 분기·미지원 안내를 추가하고 자동 검사와 이 Mac에서의 설치 파일 생성을 확인했다. 실제 Windows·Linux 실행은 확인 불가로 남았다. [결과](features/cross-platform-REPORT.md)
 
 > 진행: 생기 5단계 식물 사진 20장 적용과 빨대 음용 판정 연결(`feature/vitality-photos`). 생기 개편과 정원 감지 알림은 PR #49로 develop에 병합했다. 빨대 판정은 사용자가 실제 카메라로 동작을 확인했고, 기준값(입 오므림 0.45)은 계속 조정한다. 실제 화면 잠금 확인이 남았다. [결과](features/plant-vitality-REPORT.md)

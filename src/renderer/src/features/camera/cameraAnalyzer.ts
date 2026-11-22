@@ -17,6 +17,8 @@ import {
   headPitchUp,
   isHandAtMouth,
   poseHead,
+  poseHands,
+  wristDirection,
   type Box,
   type HeadSource,
   type HoldSource,
@@ -143,8 +145,8 @@ export async function createAnalyzer(
     const containerHold = new ContainerHold()
     const faceCover = new FaceCover()
     let lastNow = 0
-    // 마지막으로 손 옆에 용기(점수 무관)가 보인 시각
-    let carriedAt = -Infinity
+    // 반대 손에서 본 용기가 확대 검출 기준을 낮추지 않도록 각각 기억한다.
+    const carriedAt = [-Infinity, -Infinity]
 
     const analyze = (image: TexImageSource, width: number, height: number): AnalysisResult => {
       // 영상 모드 모델은 시각이 계속 늘어나야 한다.
@@ -181,6 +183,20 @@ export async function createAnalyzer(
               y: (faceMarks[13].y + faceMarks[14].y) / 2
             }
           : null
+      const lipWidth =
+        faceMarks?.[61] && faceMarks[291]
+          ? Math.hypot(
+              (faceMarks[291].x - faceMarks[61].x) * aspect,
+              faceMarks[291].y - faceMarks[61].y
+            )
+          : 0
+      const lipGap =
+        lipWidth > 0 && faceMarks?.[13] && faceMarks[14]
+          ? Math.hypot(
+              (faceMarks[14].x - faceMarks[13].x) * aspect,
+              faceMarks[14].y - faceMarks[13].y
+            ) / lipWidth
+          : null
       const faceHeight =
         faceMarks?.[10] && faceMarks[152]
           ? Math.hypot(
@@ -198,10 +214,10 @@ export async function createAnalyzer(
           })()
         : null
 
-      // 자세 모델: 얼굴을 놓쳤을 때의 머리 정보와 15~22번 손목·새끼·검지·엄지
-      const poseMarks = pose.detectForVideo(image, now).landmarks[0] ?? []
+      const poseResult = pose.detectForVideo(image, now)
+      const poseMarks = poseResult.landmarks[0] ?? []
       const head = poseHead(poseMarks, aspect)
-      const handPoints = poseMarks.slice(15, 23).filter((point) => (point.visibility ?? 0) >= 0.5)
+      const handPoints = poseHands(poseMarks)
 
       // 손 옆에 용기가 보이면(낮은 점수 포함) 집어 드는 중일 수 있어 기억한다.
       const allBoxes: Box[] = containers.flatMap((item) =>
@@ -216,11 +232,9 @@ export async function createAnalyzer(
             ]
           : []
       )
-      const containerNearHand = handPoints.some((point) =>
-        allBoxes.some((box) => distanceToBox(point, box) <= 0.08)
-      )
-      if (containerNearHand) carriedAt = now
-      const carried = now - carriedAt <= CARRY_MEMORY_MS
+      for (const point of handPoints) {
+        if (allBoxes.some((box) => distanceToBox(point, box) <= 0.08)) carriedAt[point.side] = now
+      }
 
       // 손 주변을 잘라 320×320으로 키워 다시 찾는다. 손이 가슴 위로 올라왔을 때만 돈다.
       const zoomRegions = zoomContext ? handZoomRegions(poseMarks, aspect) : []
@@ -254,7 +268,14 @@ export async function createAnalyzer(
             zoomed: true,
             boundingBox: { ...box, originX, originY, width: boxWidth, height: boxHeight }
           })
-          if (!countsAsContainer(item.categories[0], true, carried)) continue
+          if (
+            !countsAsContainer(
+              item.categories[0],
+              true,
+              now - carriedAt[region.side] <= CARRY_MEMORY_MS
+            )
+          )
+            continue
           zoomBoxes.push({
             x: originX / width,
             y: originY / height,
@@ -270,24 +291,34 @@ export async function createAnalyzer(
         now,
         meshMouth ?? head?.mouth ?? null,
         zoomBoxes,
-        zoomRegions.length > 0
+        zoomRegions.map(({ side }) => side)
       )
-      // 정면으로 병을 들면 병 바닥이 얼굴을 가려 용기를 못 찾는다. 가림 자체는 용기 없이도 마시는 자세로 보고,
-      // 기록 여부는 마시는 중이나 내려놓은 직후에 용기가 보였는지로 정한다(SipDetector).
-      const covered = faceCover.observe(faceBox, handPoints, [...boxes, ...zoomBoxes], now)
-      // 얼굴이 보이면 얼굴 모델의 입을, 놓치면 자세 모델의 입과 어깨 너비를 쓴다.
-      const handAtMouth = covered
-        ? true
-        : meshMouth
-          ? isHandAtMouth(meshMouth, faceHeight, handPoints, aspect)
-          : isHandAtMouth(head?.mouth ?? null, (head?.scale ?? 0) * 0.6, handPoints, aspect)
+      const hand = containerHold.hand
+      const holdingPoints = handPoints.filter((point) => point.side === hand)
+      const holdingBoxes = [...boxes, ...zoomBoxes].filter((box) =>
+        holdingPoints.some((point) => distanceToBox(point, box) <= 0.05)
+      )
+      const covered = faceCover.observe(faceBox, holdingPoints, holdingBoxes, now)
+      const handAtMouth =
+        hand === null
+          ? false
+          : covered ||
+            isHandAtMouth(
+              meshMouth ?? head?.mouth ?? null,
+              meshMouth ? faceHeight : (head?.scale ?? 0) * 0.6,
+              holdingPoints,
+              aspect,
+              head?.mouth?.z
+            )
       const sip = sipDetector.observe(
         {
           pitch,
           posePitch: head?.pitch ?? null,
           covered,
           handAtMouth,
-          containerHeld: held,
+          hand,
+          wrist: hand === null ? null : wristDirection(poseResult.worldLandmarks[0] ?? [], hand),
+          lipGap,
           mouth: mouthReading.current
         },
         now
