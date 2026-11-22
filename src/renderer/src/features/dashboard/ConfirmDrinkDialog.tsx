@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from 'react'
 import type { DrinkConfirmation } from '../../../../shared/appState'
+import drop from '../../assets/icons/drop.webp'
 
 export default function ConfirmDrinkDialog({
   reason,
@@ -42,6 +43,9 @@ export default function ConfirmDrinkDialog({
       }}
     >
       <div className="cf-body">
+        <div className="cf-icon" aria-hidden="true">
+          <img src={drop} alt="" />
+        </div>
         <h3 id={titleId}>방금 또 마셨나요?</h3>
         <p id={descriptionId} className="lead">
           {reason === 'camera'
