@@ -121,7 +121,7 @@ function drawPreview(
 
 function localAsset(asset: string): string {
   const url = new URL(asset, window.location.href)
-  if (url.protocol !== 'file:') return url.href
+  if (import.meta.env.DEV) return url.href
   return `hanzanhae-assets://app/${url.pathname.split('/').at(-1)}`
 }
 
@@ -221,6 +221,8 @@ export function useCameraDetection(hasGoal: boolean, onSip: () => void): CameraC
     setSipCount(0)
     setMessage('')
   }, [])
+
+  useEffect(() => window.hanzanhae.onCameraStopRequested(stop), [stop])
 
   useEffect(() => {
     let cancelled = false

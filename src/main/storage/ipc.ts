@@ -1,9 +1,9 @@
 import { app, BrowserWindow, dialog, ipcMain, powerMonitor } from 'electron'
 import { mkdirSync, writeFileSync } from 'fs'
-import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
-import { pathToFileURL } from 'url'
 import { randomUUID } from 'crypto'
+import { isRendererUrl } from '../camera/security'
+import { rendererUrl } from '../windows/rendererUrl'
 import type {
   AppResult,
   SetupInput,
@@ -21,6 +21,7 @@ import {
   AlreadyConfiguredError,
   AppDatabase,
   InvalidSetupError,
+  recoverInterruptedReset,
   resetDatabaseFile,
   StaleStateError,
   DrinkConfirmationRequiredError,
@@ -39,7 +40,11 @@ export function setCameraActive(active: boolean): void {
 const databasePath = (): string => join(app.getPath('userData'), 'hanzanhae.sqlite')
 
 export function getDatabase(): AppDatabase {
-  if (!database) database = new AppDatabase(databasePath())
+  if (!database) {
+    const path = databasePath()
+    recoverInterruptedReset(path)
+    database = new AppDatabase(path)
+  }
   return database
 }
 
@@ -62,24 +67,10 @@ function resetDatabase(): void {
 }
 
 export function trusted(event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): boolean {
-  if (!BrowserWindow.fromWebContents(event.sender) || event.senderFrame !== event.sender.mainFrame)
+  const frame = event.senderFrame
+  if (!frame || !BrowserWindow.fromWebContents(event.sender) || frame !== event.sender.mainFrame)
     return false
-  try {
-    const current = new URL(event.sender.getURL())
-    const expected = new URL(
-      is.dev && process.env['ELECTRON_RENDERER_URL']
-        ? process.env['ELECTRON_RENDERER_URL']
-        : pathToFileURL(join(__dirname, '../renderer/index.html')).toString()
-    )
-    // file: 주소는 origin이 모두 'null'이라 프로토콜·호스트·경로를 직접 비교한다.
-    return (
-      current.protocol === expected.protocol &&
-      current.host === expected.host &&
-      current.pathname === expected.pathname
-    )
-  } catch {
-    return false
-  }
+  return isRendererUrl(frame.url, rendererUrl()) || isRendererUrl(frame.url, rendererUrl('garden'))
 }
 
 function sendToGarden(garden: BrowserWindow | null, channel: string, value: number): void {

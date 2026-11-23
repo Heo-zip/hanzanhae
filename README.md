@@ -17,7 +17,7 @@ Electron · React · TypeScript · SQLite
 
 ## 설치
 
-배포 페이지의 DMG를 받아 설치합니다. 지금 버전은 Apple 서명·공증 전이라 처음 열 때 한 번 허용이 필요합니다. [설치 안내](docs/install-mac.md)를 따라 주세요.
+Apple Silicon용 공식 DMG를 받아 설치합니다. 앱에는 Developer ID 서명과 Apple 공증이 적용됩니다. [DMG 다운로드](https://github.com/Heo-zip/hanzanhae-releases/releases/latest/download/hanzanhae-mac-arm64.dmg) · [설치 안내](docs/install-mac.md)
 
 ## 시작하기
 

@@ -1,19 +1,33 @@
-/** 신뢰된 대시보드 메인 프레임의 주소인지 확인한다. */
-export function isDashboardUrl(url: string | undefined, expectedUrl: string): boolean {
+export const PACKAGED_RENDERER_URL = 'hanzanhae-app://app/index.html'
+
+/** 메인 프레임의 주소가 창에 지정한 주소와 정확히 일치하는지 확인한다. */
+export function isRendererUrl(url: string | undefined, expectedUrl: string): boolean {
   try {
-    if (!url) return false
-    const actual = new URL(url)
-    const expected = new URL(expectedUrl)
-    // file: 주소는 origin이 모두 'null'이라 프로토콜·호스트·경로를 직접 비교한다.
-    return (
-      actual.protocol === expected.protocol &&
-      actual.host === expected.host &&
-      actual.pathname === expected.pathname &&
-      !actual.search &&
-      !actual.hash
-    )
+    return !!url && new URL(url).href === new URL(expectedUrl).href
   } catch {
     return false
+  }
+}
+
+/** 배포 화면과 번들 에셋만 앱 전용 주소로 읽는다. */
+export function rendererAssetPath(requestUrl: string, method: string): string | null {
+  try {
+    const url = new URL(requestUrl)
+    if (
+      method !== 'GET' ||
+      url.protocol !== 'hanzanhae-app:' ||
+      url.host !== 'app' ||
+      url.username ||
+      url.password ||
+      url.hash
+    )
+      return null
+    if (url.pathname === '/index.html' && (!url.search || url.search === '?view=garden'))
+      return 'index.html'
+    const asset = /^\/assets\/[\w.-]+\.(?:css|js|mjs|webp|png|jpe?g|svg|avif|woff2?)$/
+    return !url.search && asset.test(url.pathname) ? url.pathname.slice(1) : null
+  } catch {
+    return null
   }
 }
 

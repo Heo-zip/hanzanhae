@@ -11,20 +11,34 @@ const source = ts.transpileModule(readFileSync(path, 'utf8'), {
 }).outputText
 const module = new Module(path)
 module._compile(source, path)
-const { isDashboardUrl, cameraAssetName } = module.exports
+const { PACKAGED_RENDERER_URL, isRendererUrl, cameraAssetName, rendererAssetPath } = module.exports
 
 test('다른 출처, 경로, 정원 창의 카메라 요청을 허용하지 않는다', () => {
-  const dashboard = 'file:///app/out/renderer/index.html'
-  assert.equal(isDashboardUrl(dashboard, dashboard), true)
-  assert.equal(isDashboardUrl(`${dashboard}?view=garden`, dashboard), false)
-  assert.equal(isDashboardUrl('file:///app/out/other.html', dashboard), false)
-  assert.equal(isDashboardUrl('https://example.com/app/out/renderer/index.html', dashboard), false)
-  assert.equal(isDashboardUrl(undefined, dashboard), false)
-  assert.equal(isDashboardUrl('file://evil/app/out/renderer/index.html', dashboard), false)
-  assert.equal(isDashboardUrl(`${dashboard}#x`, dashboard), false)
+  const dashboard = PACKAGED_RENDERER_URL
+  const garden = `${dashboard}?view=garden`
+  assert.equal(isRendererUrl(dashboard, dashboard), true)
+  assert.equal(isRendererUrl(garden, garden), true)
+  assert.equal(isRendererUrl(garden, dashboard), false)
+  assert.equal(isRendererUrl('file:///app/out/renderer/index.html', dashboard), false)
+  assert.equal(isRendererUrl('https://example.com/index.html', dashboard), false)
+  assert.equal(isRendererUrl(undefined, dashboard), false)
+  assert.equal(isRendererUrl('hanzanhae-app://other/index.html', dashboard), false)
+  assert.equal(isRendererUrl(`${dashboard}#x`, dashboard), false)
   const dev = 'http://localhost:5173/'
-  assert.equal(isDashboardUrl('http://localhost:5173/', dev), true)
-  assert.equal(isDashboardUrl('http://localhost:5174/', dev), false)
+  assert.equal(isRendererUrl('http://localhost:5173/', dev), true)
+  assert.equal(isRendererUrl('http://localhost:5174/', dev), false)
+})
+
+test('앱 주소로는 화면과 번들 에셋만 읽을 수 있다', () => {
+  const base = 'hanzanhae-app://app'
+  assert.equal(rendererAssetPath(PACKAGED_RENDERER_URL, 'GET'), 'index.html')
+  assert.equal(rendererAssetPath(`${PACKAGED_RENDERER_URL}?view=garden`, 'GET'), 'index.html')
+  assert.equal(rendererAssetPath(`${base}/assets/index-A1_b.css`, 'GET'), 'assets/index-A1_b.css')
+  assert.equal(rendererAssetPath(`${base}/assets/%2e%2e/%2e%2e/user.sqlite`, 'GET'), null)
+  assert.equal(rendererAssetPath(`${base}/assets/sub/index.js`, 'GET'), null)
+  assert.equal(rendererAssetPath(`${base}/index.html?view=other`, 'GET'), null)
+  assert.equal(rendererAssetPath(PACKAGED_RENDERER_URL, 'POST'), null)
+  assert.equal(rendererAssetPath('hanzanhae-app://user@app/index.html', 'GET'), null)
 })
 
 test('모델과 실행 파일만 허용하고 임의 파일이나 다른 요청은 차단한다', () => {
