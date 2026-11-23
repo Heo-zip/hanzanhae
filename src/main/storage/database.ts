@@ -1,6 +1,6 @@
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, renameSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type {
   AppState,
@@ -35,23 +35,30 @@ export function resetDatabaseFile(
   db.backupTo(backupPath)
   db.close()
   const aside = `${path}.resetting`
-  const sidecars = ['-wal', '-shm', '-journal']
-  rmSync(aside, { force: true })
   renameSync(path, aside)
-  for (const suffix of sidecars) rmSync(path + suffix, { force: true })
+  let fresh: AppDatabase | undefined
   try {
-    const fresh = open(path)
-    rmSync(aside, { force: true })
+    removeDatabaseSidecars(path)
+    fresh = open(path)
+    rmSync(aside)
     return fresh
   } catch (error) {
-    try {
-      for (const suffix of ['', ...sidecars]) rmSync(path + suffix, { force: true })
-    } catch {
-      // 아래 이름 되돌리기가 남은 파일을 덮어쓴다.
-    }
-    renameSync(aside, path)
+    fresh?.close()
+    recoverInterruptedReset(path)
     throw error
   }
+}
+
+function removeDatabaseSidecars(path: string): void {
+  for (const suffix of ['-wal', '-shm', '-journal']) rmSync(path + suffix, { force: true })
+}
+
+/** 초기화가 완료되기 전에 종료되면 다음 실행에서 이전 DB를 복구한다. */
+export function recoverInterruptedReset(path: string): void {
+  const aside = `${path}.resetting`
+  if (!existsSync(aside)) return
+  removeDatabaseSidecars(path)
+  renameSync(aside, path)
 }
 
 export class AlreadyConfiguredError extends Error {}

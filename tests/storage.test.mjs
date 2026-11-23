@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -28,6 +28,7 @@ if (previousTsLoader) Module._extensions['.ts'] = previousTsLoader
 else delete Module._extensions['.ts']
 const {
   AppDatabase,
+  recoverInterruptedReset,
   resetDatabaseFile,
   AlreadyConfiguredError,
   InvalidSetupError,
@@ -1762,6 +1763,31 @@ test('모든 기록 지우기는 사본을 남기고, 새 DB를 못 열면 원�
       readdirSync(dir).some((name) => name.endsWith('.resetting')),
       false
     )
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('초기화 도중 종료하면 다음 실행에 이전 기록을 복구한다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hanzanhae-reset-recovery-'))
+  const path = join(dir, 'data.sqlite')
+  try {
+    const db = new AppDatabase(path)
+    const state = db.completeSetup({ requestId: 'setup', goalCount: 8, cupMl: 500 })
+    db.recordCup({ requestId: 'cup', expectedGoalId: state.goalId, day: state.day })
+    db.close()
+    renameSync(path, `${path}.resetting`)
+
+    new AppDatabase(path).close()
+    recoverInterruptedReset(path)
+    recoverInterruptedReset(path)
+    const recovered = new AppDatabase(path)
+    try {
+      assert.equal(recovered.readState().todayMl, 500)
+      assert.equal(readdirSync(dir).includes('data.sqlite.resetting'), false)
+    } finally {
+      recovered.close()
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

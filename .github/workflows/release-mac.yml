@@ -16,17 +16,25 @@ concurrency:
 jobs:
   release:
     runs-on: macos-15
+    environment: macos-release
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
 
-      - name: 태그와 앱 버전 확인
+      - name: 배포 커밋과 앱 버전 확인
         run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+            echo "main에 포함된 커밋만 배포할 수 있어요."
+            exit 1
+          fi
           VERSION="v$(node -p "require('./package.json').version")"
           if [ "$VERSION" != "$GITHUB_REF_NAME" ]; then
             echo "태그($GITHUB_REF_NAME)와 package.json 버전($VERSION)이 달라요."
@@ -66,6 +74,24 @@ jobs:
           xcrun stapler validate "$APP"
           spctl --assess --type execute -vv "$APP"
 
+      - name: DMG 공증과 최종 해시 확인
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -o pipefail
+          cd dist
+          DMG=hanzanhae-mac-arm64.dmg
+          codesign --verify --strict "$DMG"
+          xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" \
+            --wait --output-format json | jq -e 'select(.status == "Accepted") | {id, status}'
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          spctl --assess --type open --context context:primary-signature -vv "$DMG"
+          shasum -a 256 "$DMG" > "$DMG.sha256"
+
       # 초안이 아닌 정식 릴리스로 올려야 랜딩의 latest 다운로드 주소와 자동 업데이트가 새 버전을 찾는다.
       - name: 배포 저장소에 릴리스 올리기
         env:
@@ -76,7 +102,7 @@ jobs:
             --title "한잔해 $GITHUB_REF_NAME" \
             --notes "macOS(Apple Silicon)용 한잔해 $GITHUB_REF_NAME 입니다." \
             dist/hanzanhae-mac-arm64.dmg \
-            dist/hanzanhae-mac-arm64.dmg.blockmap \
+            dist/hanzanhae-mac-arm64.dmg.sha256 \
             dist/hanzanhae-*-mac-arm64.zip \
             dist/hanzanhae-*-mac-arm64.zip.blockmap \
             dist/latest-mac.yml

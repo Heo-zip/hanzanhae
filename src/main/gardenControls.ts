@@ -8,12 +8,11 @@ import {
   toggleGardenWindow
 } from './windows/gardenWindow'
 
-let tray: Tray | null = null
-
 export function initializeGardenControls(
   showDashboard: () => void,
-  checkForUpdates: () => void
-): void {
+  checkForUpdates: () => void,
+  stopCamera: () => void
+): (active: boolean) => void {
   const shortcutRegistered = globalShortcut.register(GARDEN_SHORTCUT, toggleGardenWindow)
   const shortcutLabel = process.platform === 'darwin' ? '⌘ + ⌥ + ⇧ + H' : 'Ctrl + Alt + Shift + H'
 
@@ -24,31 +23,41 @@ export function initializeGardenControls(
       ? nativeImage.createFromPath(trayIcon)
       : nativeImage.createFromPath(appIcon).resize({ width: 32, height: 32 })
   if (process.platform === 'darwin') image.setTemplateImage(true)
-  tray = new Tray(image)
+  const tray = new Tray(image)
+  let cameraActive = false
   // Windows는 트레이 아이콘을 왼쪽 클릭해도 메뉴가 열리지 않으므로 대시보드를 연다.
   if (process.platform === 'win32') tray.on('click', showDashboard)
-  tray.setToolTip('한잔해')
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: '정원 보이기', click: showGardenWindow },
-      { label: '정원 숨기기', click: hideGardenWindow },
-      {
-        label: shortcutRegistered
-          ? `정원 전환: ${shortcutLabel}`
-          : `단축키 등록 실패: ${shortcutLabel} (다른 앱과 충돌할 수 있어요)`,
-        enabled: false
-      },
-      { type: 'separator' },
-      { label: '대시보드 열기', click: showDashboard },
-      { label: '업데이트 확인', click: checkForUpdates },
-      { type: 'separator' },
-      { label: '한잔해 종료', click: () => app.quit() }
-    ])
-  )
+  function updateMenu(): void {
+    tray.setToolTip(cameraActive ? '한잔해 · 카메라 사용 중' : '한잔해')
+    if (process.platform === 'darwin') tray.setTitle(cameraActive ? '카메라 사용 중' : '')
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: '정원 보이기', click: showGardenWindow },
+        { label: '정원 숨기기', click: hideGardenWindow },
+        {
+          label: shortcutRegistered
+            ? `정원 전환: ${shortcutLabel}`
+            : `단축키 등록 실패: ${shortcutLabel} (다른 앱과 충돌할 수 있어요)`,
+          enabled: false
+        },
+        { type: 'separator' },
+        { label: '대시보드 열기', click: showDashboard },
+        { label: '카메라 끄기', visible: cameraActive, click: stopCamera },
+        { label: '업데이트 확인', click: checkForUpdates },
+        { type: 'separator' },
+        { label: '한잔해 종료', click: () => app.quit() }
+      ])
+    )
+  }
+  updateMenu()
 
   app.once('will-quit', () => {
     if (shortcutRegistered) globalShortcut.unregister(GARDEN_SHORTCUT)
-    tray?.destroy()
-    tray = null
+    tray.destroy()
   })
+  return (active) => {
+    if (tray.isDestroyed() || active === cameraActive) return
+    cameraActive = active
+    updateMenu()
+  }
 }

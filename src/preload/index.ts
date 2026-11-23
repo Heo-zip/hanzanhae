@@ -47,6 +47,11 @@ contextBridge.exposeInMainWorld('hanzanhae', {
   setCameraActive(active: boolean): void {
     if (typeof active === 'boolean') ipcRenderer.send('camera:set-active', active)
   },
+  onCameraStopRequested: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('camera:stop-requested', listener)
+    return () => ipcRenderer.removeListener('camera:stop-requested', listener)
+  },
   getLoginItem: () => ipcRenderer.invoke('app:get-login-item'),
   setLoginItem: (openAtLogin: boolean) => ipcRenderer.invoke('app:set-login-item', openAtLogin),
   getReminderSettings: () => ipcRenderer.invoke('reminder:get-settings'),

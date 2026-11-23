@@ -465,8 +465,9 @@ export default function Settings({
             <div className="set">
               <div>
                 <b>마시는 동작 알아보기</b>
-                <span className="camera-sub">
-                  마시면 오늘 횟수에 1회 기록해요. 영상은 이 컴퓨터에서만 보고 저장하지 않아요
+                <span id="camera-privacy-description" className="camera-sub">
+                  창을 닫아도 감지해요. 메뉴 막대에서 끌 수 있어요. 영상은 이 Mac에서만 분석하고
+                  저장하지 않아요.
                 </span>
               </div>
               <button
@@ -474,6 +475,7 @@ export default function Settings({
                 role="switch"
                 aria-checked={camera.status !== 'off'}
                 aria-label="카메라 감지"
+                aria-describedby="camera-privacy-description"
                 disabled={state.status !== 'ready'}
                 onClick={() => {
                   if (camera.status === 'off') void camera.start()
