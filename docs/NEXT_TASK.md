@@ -1,6 +1,6 @@
 # 다음 작업
 
-> 다음: macOS 15 실행기로 바꾼 배포 워크플로로 첫 릴리스를 실행하고 DMG 공개 다운로드를 확인한다. 기존 실행은 빌드 전에 취소됐다. [오류 기록](features/release-mac-runner-ERROR.md) · [macOS 배포](release-mac.md). 정량 재측정은 [#67](https://github.com/Heo-zip/hanzanhae/issues/67)로 분리했다.
+> 다음: `macos-release` 환경의 Secrets 6개를 확인하고 `v1.0.1` 배포를 검토한다. 정식 배포 후 공개 DMG 설치 및 `1.0.0 → 1.0.1` 자동 업데이트에서 기존 기록과 카메라 설정을 확인한다. 음용 판정 정량 재측정은 [#67](https://github.com/Heo-zip/hanzanhae/issues/67)에서 진행한다. [macOS 배포](release-mac.md)
 
 > 검토: [#64](https://github.com/Heo-zip/hanzanhae/issues/64) 수동 추가 확인과 텀블러 되돌리기. 자동 검증 완료. 실제 macOS 화면에서 버튼 연타·키보드 확인·텀블러 되돌리기를 사용자가 확인하면 병합한다. [검증 결과](features/drink-record-guards-REPORT.md)
 

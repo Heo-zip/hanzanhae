@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, net, protocol, session } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { electronApp, optimizer } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import {
   getGardenWindow,
@@ -14,22 +14,27 @@ import { initializeStorageIpc, setCameraActive, trusted } from './storage/ipc'
 import { initializeReminders } from './reminders/service'
 import { initializeLoginItemIpc } from './loginItem'
 import { initializeUpdates } from './updates'
-import { cameraAssetName, isDashboardUrl } from './camera/security'
+import { cameraAssetName, isRendererUrl, rendererAssetPath } from './camera/security'
+import { rendererUrl } from './windows/rendererUrl'
 
 let dashboardWindow: BrowserWindow | null = null
+let updateCameraMenu: ((active: boolean) => void) | undefined
 
-// 패키지의 모델과 WASM만 로컬에서 읽는 전용 프로토콜이다.
+// 화면과 카메라 모델에 각각 앱 내부 전용 주소를 사용한다.
 protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'hanzanhae-app',
+    privileges: { standard: true, secure: true, supportFetchAPI: true }
+  },
   {
     scheme: 'hanzanhae-assets',
     privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true }
   }
 ])
 
-function expectedDashboardUrl(): string {
-  return is.dev && process.env['ELECTRON_RENDERER_URL']
-    ? process.env['ELECTRON_RENDERER_URL']
-    : pathToFileURL(join(__dirname, '../renderer/index.html')).toString()
+function setCameraCapture(active: boolean): void {
+  setCameraActive(active)
+  updateCameraMenu?.(active)
 }
 
 // 두 번째 실행은 같은 SQLite 파일·메뉴 막대·단축키를 겹쳐 쓰지 않도록 바로 종료하고,
@@ -76,24 +81,19 @@ function createWindow(): void {
   // 화면을 다시 불러오면 카메라도 꺼지므로 숨긴 창의 백그라운드 제한을 기본값으로 되돌린다.
   mainWindow.webContents.on('did-start-loading', () => {
     mainWindow.webContents.setBackgroundThrottling(true)
-    setCameraActive(false)
+    setCameraCapture(false)
   })
+  mainWindow.webContents.on('render-process-gone', () => setCameraCapture(false))
   mainWindow.on('closed', () => {
     if (dashboardWindow === mainWindow) dashboardWindow = null
-    setCameraActive(false)
+    setCameraCapture(false)
   })
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
   })
 
-  // 개발 중에는 변경 사항이 바로 반영되는 개발 서버를 불러온다.
-  // 배포 환경에서는 앱에 포함된 HTML 파일을 불러온다.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  void mainWindow.loadURL(rendererUrl())
 }
 
 function showDashboard(): void {
@@ -107,6 +107,12 @@ function showDashboard(): void {
 // 일부 API는 이 시점 이후에만 사용할 수 있다.
 app.whenReady().then(() => {
   if (!isPrimaryInstance) return
+
+  protocol.handle('hanzanhae-app', (request) => {
+    const path = rendererAssetPath(request.url, request.method)
+    if (!path) return new Response('Not found', { status: 404 })
+    return net.fetch(pathToFileURL(join(__dirname, '../renderer', path)).toString())
+  })
 
   protocol.handle('hanzanhae-assets', async (request) => {
     const name = cameraAssetName(request.url, request.method)
@@ -145,7 +151,7 @@ app.whenReady().then(() => {
     if (!trusted(event) || event.sender !== dashboardWindow?.webContents) return
     if (typeof active !== 'boolean') return
     event.sender.setBackgroundThrottling(!active)
-    setCameraActive(active)
+    setCameraCapture(active)
   })
   // 카메라는 대시보드의 메인 프레임만 사용할 수 있다. 마이크·화면 캡처는 허용하지 않는다.
   session.defaultSession.setPermissionCheckHandler((contents, permission, _origin, details) => {
@@ -153,7 +159,7 @@ app.whenReady().then(() => {
     return (
       contents === dashboardWindow?.webContents &&
       details.isMainFrame &&
-      isDashboardUrl(details.requestingUrl, expectedDashboardUrl()) &&
+      isRendererUrl(details.requestingUrl, rendererUrl()) &&
       details.mediaType === 'video'
     )
   })
@@ -163,7 +169,7 @@ app.whenReady().then(() => {
       permission === 'media' &&
         contents === dashboardWindow?.webContents &&
         details.isMainFrame &&
-        isDashboardUrl(details.requestingUrl, expectedDashboardUrl()) &&
+        isRendererUrl(details.requestingUrl, rendererUrl()) &&
         Array.isArray(mediaTypes) &&
         mediaTypes.length === 1 &&
         mediaTypes[0] === 'video'
@@ -171,7 +177,10 @@ app.whenReady().then(() => {
   })
   createWindow()
   showGardenWindow()
-  initializeGardenControls(showDashboard, initializeUpdates())
+  updateCameraMenu = initializeGardenControls(showDashboard, initializeUpdates(), () => {
+    if (!dashboardWindow || dashboardWindow.isDestroyed()) return
+    dashboardWindow.webContents.send('camera:stop-requested')
+  })
   initializeReminders(() => dashboardWindow, showDashboard)
 
   app.on('activate', function () {

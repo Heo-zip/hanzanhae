@@ -37,6 +37,7 @@ declare global {
       onGardenSettingsChanged: (callback: () => void) => () => void
       getStatistics: () => Promise<StatisticsResult>
       setCameraActive: (active: boolean) => void
+      onCameraStopRequested: (callback: () => void) => () => void
       getLoginItem: () => Promise<LoginItemResult>
       setLoginItem: (openAtLogin: boolean) => Promise<LoginItemResult>
       getReminderSettings: () => Promise<ReminderSettingsResult>

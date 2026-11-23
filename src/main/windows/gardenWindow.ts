@@ -1,6 +1,6 @@
 import { app, autoUpdater, BrowserWindow, ipcMain, Menu, screen } from 'electron'
 import { join } from 'path'
-import { is } from '@electron-toolkit/utils'
+import { rendererUrl } from './rendererUrl'
 import type {
   GardenSettings,
   GardenSettingsChange,
@@ -362,13 +362,5 @@ export function showGardenWindow(): void {
     if (gardenWindow === window) gardenWindow = null
   })
 
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    const url = new URL(process.env['ELECTRON_RENDERER_URL'])
-    url.searchParams.set('view', 'garden')
-    void window.loadURL(url.toString())
-  } else {
-    void window.loadFile(join(__dirname, '../renderer/index.html'), {
-      query: { view: 'garden' }
-    })
-  }
+  void window.loadURL(rendererUrl('garden'))
 }

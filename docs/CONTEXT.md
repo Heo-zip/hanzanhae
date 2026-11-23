@@ -1,6 +1,6 @@
 # 현재 작업 상태
 
-> 첫 배포 시도: Actions Secrets 6개를 등록하고 `develop`을 `main`에 병합한 뒤 `v1.0.0` 태그를 푸시했다. macOS 14 실행기 지원 종료로 빌드 전에 취소됐다. [오류 기록](features/release-mac-runner-ERROR.md) · [macOS 배포](release-mac.md)
+> 첫 배포: macOS 15 실행기로 교체해 `v1.0.0` Apple Silicon용 앱을 공개했다. 다음 버전에는 배포 권한 제한, Electron 보안 패치, DMG 공증, 카메라 표시와 중단된 초기화 복구를 적용한다. [macOS 배포](release-mac.md)
 
 > 구현·자동 검증: [#64](https://github.com/Heo-zip/hanzanhae/issues/64). 수동 횟수 연타와 카메라 직후 추가를 저장 전에 확인하고, 텀블러 기록 후 실제 용량과 되돌리기를 표시한다. [검증 결과](features/drink-record-guards-REPORT.md)
 

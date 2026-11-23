@@ -220,10 +220,10 @@ test('macOS 업데이트 종료 이벤트는 창을 숨기지 않고 닫을 수 
   windowModule.filename = windowPath
   const mocks = {
     electron: { app: events, autoUpdater: nativeUpdater, ipcMain: new EventEmitter() },
-    '@electron-toolkit/utils': { is: {} },
     '../storage/ipc': {},
     '../../shared/platform': {},
-    './gardenPosition': {}
+    './gardenPosition': {},
+    './rendererUrl': {}
   }
   windowModule.require = (name) =>
     name in mocks ? mocks[name] : Module.prototype.require.call(windowModule, name)
