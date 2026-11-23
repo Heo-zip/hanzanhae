@@ -1,0 +1,424 @@
+.setup-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  box-sizing: border-box;
+  background: var(--page);
+  color: var(--text);
+  font-family: 'Paperlogy', sans-serif;
+}
+.setup-card {
+  width: min(100%, 440px);
+  box-sizing: border-box;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  padding: 36px 42px;
+  box-shadow: 0 12px 48px #1c46200d;
+}
+.setup-logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+.setup-plant {
+  display: block;
+  width: 128px;
+  height: 128px;
+  margin: 0 auto;
+  object-fit: contain;
+}
+.setup-card h1 {
+  font-size: 25px;
+  margin: 8px 0;
+}
+.setup-card p {
+  color: var(--text-sub);
+  line-height: 1.5;
+}
+.setup-card form {
+  display: grid;
+  gap: 10px;
+  margin: 24px 0 16px;
+}
+.setup-card label {
+  font-weight: 700;
+  margin-top: 8px;
+}
+.setup-card label span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.setup-card input {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 13px;
+  font: inherit;
+}
+.setup-card input[aria-invalid='true'] {
+  border-color: #c74646;
+}
+.setup-card button {
+  margin-top: 14px;
+  border: 0;
+  border-radius: 12px;
+  padding: 14px;
+  background: #19b35e;
+  color: white;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.setup-card button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.setup-card .setup-error {
+  margin: 0;
+  color: #b53838;
+  font-size: 14px;
+}
+.setup-card small {
+  color: var(--text-muted);
+}
+/* ── 첫 실행: 목표와 한 잔 용량을 묻는 설정 화면 (창 전체를 덮는다) ── */
+.onboard {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  background: linear-gradient(180deg, var(--sky-a) 0%, var(--window) 62%);
+  /* 언덕 장식이 아래로 넘친다. hidden은 입력칸 자동 포커스 때 영역을 스크롤시켜 내용이 위로 밀리므로 clip을 쓴다. */
+  overflow: clip;
+}
+.window.setup .onboard {
+  display: flex;
+}
+.onboard::before,
+.onboard::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  z-index: 0;
+}
+.onboard::before {
+  width: 900px;
+  height: 260px;
+  left: -120px;
+  bottom: -190px;
+  background: var(--hill-a);
+}
+.onboard::after {
+  width: 760px;
+  height: 240px;
+  right: -180px;
+  bottom: -190px;
+  background: var(--hill-b);
+}
+.ob-top {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+}
+.ob-top .lights {
+  padding: 0;
+  width: 52px;
+  height: 12px;
+}
+.ob-dots {
+  display: flex;
+  gap: 6px;
+}
+.ob-dots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--line);
+  display: block;
+  transition:
+    width 0.3s,
+    background 0.3s;
+}
+.ob-dots i.on {
+  width: 24px;
+  background: var(--brand);
+}
+.ob-body {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  width: min(560px, 100% - 48px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* 상단 진행 표시 높이만큼 보정해 모든 단계의 내용을 창 중앙에 놓는다. */
+  padding-bottom: 48px;
+}
+.ob-step {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  animation: obIn 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ob-step.on {
+  display: flex;
+}
+@keyframes obIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+.ob-step .eyebrow {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--brand-ink);
+  margin-bottom: 10px;
+}
+.ob-step h1 {
+  margin: 0 0 12px;
+  font-size: 32px;
+  line-height: 1.35;
+  letter-spacing: -0.6px;
+}
+.ob-step p.lead {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-sub);
+  line-height: 1.6;
+}
+.ob-step .wordmark {
+  width: 220px;
+  margin-bottom: 28px;
+}
+.amount-field {
+  margin-top: 36px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+  transition: border-color 0.2s;
+}
+.amount-field:focus-within {
+  border-color: var(--brand);
+}
+.amount-field.bad {
+  border-color: var(--danger);
+}
+.amount-field input {
+  width: 200px;
+  border: 0;
+  outline: 0;
+  background: none;
+  font: inherit;
+  font-size: 44px;
+  font-weight: 800;
+  text-align: right;
+  color: var(--text);
+  letter-spacing: -1px;
+  /* 굵은 숫자의 오른쪽 끝이 입력칸 경계에서 잘리지 않도록 여백을 둔다. */
+  padding: 0 6px 0 0;
+  -moz-appearance: textfield;
+}
+.amount-field input::-webkit-outer-spin-button,
+.amount-field input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.amount-field input::placeholder {
+  color: var(--line);
+}
+.amount-field .unit {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-sub);
+  padding-right: 6px;
+}
+.step-btn {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--card-sub);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-sub);
+  cursor: pointer;
+}
+.step-btn:hover {
+  color: var(--text);
+}
+.field-msg {
+  min-height: 22px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-sub);
+}
+.field-msg.bad {
+  color: var(--danger);
+}
+.cup-preview {
+  display: flex;
+  align-items: flex-end;
+  gap: 28px;
+  margin-top: 32px;
+}
+.cup-preview .glass {
+  width: 64px;
+  transition: height 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.cup-preview .amount-field {
+  margin-top: 0;
+}
+.ob-done-art {
+  position: relative;
+  width: 190px;
+  height: 190px;
+  margin-bottom: 4px;
+}
+.ob-done-art img.can {
+  position: absolute;
+  width: 96px;
+  right: -64px;
+  top: -6px;
+  transform: rotate(-18deg);
+}
+.ob-done-art img.pot {
+  width: 190px;
+  height: 190px;
+}
+.chips {
+  display: flex;
+  gap: 10px;
+  margin: 22px 0 18px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.chips span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 99px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  font-size: 14px;
+  color: var(--text-sub);
+}
+.chips b {
+  color: var(--text);
+}
+.chips img {
+  width: 22px;
+  height: 22px;
+}
+.ob-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 32px;
+  width: 100%;
+  max-width: 380px;
+}
+.ob-actions button {
+  flex: 1;
+  border: 0;
+  border-radius: 16px;
+  padding: 16px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    filter 0.2s,
+    transform 0.1s;
+}
+.ob-actions button:active {
+  transform: scale(0.98);
+}
+.ob-actions .primary {
+  background: var(--brand);
+  color: #fff;
+}
+.ob-actions .primary:hover {
+  filter: brightness(1.05);
+}
+.ob-actions .ghost {
+  flex: 0 0 104px;
+  background: var(--card-sub);
+  color: var(--text-sub);
+}
+/* 언덕 위 화분 정원: 새싹부터 꽃까지 성장 단계를 양옆에 둔다. 가운데는 글을 위해 비운다. */
+.ob-garden {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 300px;
+  z-index: 1;
+  pointer-events: none;
+}
+.ob-garden img {
+  position: absolute;
+  bottom: var(--b);
+  width: var(--w);
+  transform-origin: 50% 92%;
+  animation:
+    potIn 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+    potSway 4.5s ease-in-out infinite alternate;
+  animation-delay: var(--d), calc(var(--d) + 0.7s);
+}
+.ob-garden .p1 {
+  left: 3%;
+  --w: 150px;
+  --b: 10px;
+  --d: 0.05s;
+}
+.ob-garden .p2 {
+  left: 15%;
+  --w: 200px;
+  --b: 2px;
+  --d: 0.15s;
+}
+.ob-garden .p3 {
+  right: 15%;
+  --w: 230px;
+  --b: 0px;
+  --d: 0.25s;
+}
+.ob-garden .p4 {
+  right: 2%;
+  --w: 260px;
+  --b: 8px;
+  --d: 0.35s;
+}
+@keyframes potIn {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.6);
+  }
+}
+@keyframes potSway {
+  from {
+    rotate: -1.4deg;
+  }
+  to {
+    rotate: 1.4deg;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-garden img {
+    animation: none;
+  }
+}

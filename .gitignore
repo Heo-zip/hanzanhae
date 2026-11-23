@@ -4,3 +4,6 @@ out
 .DS_Store
 .eslintcache
 *.log*
+
+# 디자인 시안은 로컬에서 관리한다.
+/design/

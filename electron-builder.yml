@@ -2,6 +2,14 @@ appId: com.heozip.hanzanhae
 productName: 한잔해
 directories:
   buildResources: build
+# 오프라인으로 함께 제공하는 페이퍼로지 글꼴의 라이선스를 앱에 포함한다.
+extraResources:
+  - from: src/renderer/src/assets/fonts/OFL.txt
+    to: licenses/Paperlogy-OFL.txt
+  - from: src/renderer/src/assets/models/APACHE-2.0.txt
+    to: licenses/MediaPipe-APACHE-2.0.txt
+  - from: src/renderer/src/assets/models/README.md
+    to: licenses/MediaPipe-models.md
 files:
   - '!**/.vscode/*'
   - '!src/*'
@@ -9,27 +17,65 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  # 개발 문서·시안·테스트·스크립트는 실행에 필요 없고 내부 자료라 배포 앱에 넣지 않는다.
+  - '!{docs,design,tests,scripts}/**'
+  - '!AGENTS.md'
+# 화면이 한국어뿐이므로 Electron 언어 파일은 한국어와 영어만 남긴다.
+electronLanguages:
+  - ko
+  - en
 asarUnpack:
   - resources/**
+# 배포 앱을 다른 용도로 실행하지 못하게 한다. 카메라 권한을 가진 앱을 Node로 실행하거나
+# 디버거를 붙이는 방법을 막고, 서명된 app.asar 안의 코드만 불러온다.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+# Windows·Linux 설치 파일은 서명하지 않고 자동 업데이트 배포 정보(publish)도 넣지 않는다.
+# 자동 업데이트는 macOS만 검증했으므로 다른 OS는 앱에서 미지원으로 안내한다.
 win:
   executableName: hanzanhae
+  target:
+    - nsis
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  publish:
+    provider: github
+    owner: Heo-zip
+    repo: hanzanhae-releases
+  target:
+    - dmg
+    - zip
   entitlementsInherit: build/entitlements.mac.plist
-  notarize: false
+  # 업데이트 ZIP은 한글 앱 이름 대신 영문 이름을 쓴다. GitHub가 첨부 파일 이름의 한글을 바꾸면 업데이트 주소가 어긋난다.
+  artifactName: ${name}-${version}-mac-${arch}.${ext}
+  # 공증은 Apple 계정 환경 변수(APPLE_ID·APPLE_APP_SPECIFIC_PASSWORD·APPLE_TEAM_ID)나
+  # APPLE_KEYCHAIN_PROFILE이 있을 때만 실행된다. 환경 변수가 없는 로컬 빌드는 공증을 건너뛴다.
+  # electron-builder 26은 한글 보조 앱 이름을 분해형으로 만들지만 CFBundleName은 조합형으로 쓴다.
+  # Electron이 보조 앱을 찾도록 같은 분해형 이름을 사용한다. 화면에 보이는 이름은 productName을 유지한다.
+  # https://github.com/electron-userland/electron-builder/pull/9962
+  extendInfo:
+    CFBundleName: "\u1112\u1161\u11AB\u110C\u1161\u11AB\u1112\u1162"
+    NSCameraUsageDescription: 물 마시는 동작을 감지할 때 카메라를 사용합니다. 영상은 이 Mac에서만 처리됩니다.
 dmg:
-  artifactName: ${name}-${version}.${ext}
+  # 랜딩의 releases/latest/download 주소가 버전과 상관없이 같은 파일을 가리키도록 버전을 넣지 않는다.
+  artifactName: ${name}-mac-${arch}.${ext}
 linux:
+  # 실행 파일·패키지 이름에 한글 productName 대신 영문 이름을 쓴다.
+  executableName: hanzanhae
   target:
     - AppImage
-    - snap
     - deb
-  maintainer: electronjs.org
+  maintainer: Heo-zip
   category: Utility
+  synopsis: 물을 마시며 나만의 정원을 가꾸는 앱
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false

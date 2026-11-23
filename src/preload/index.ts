@@ -1,2 +1,81 @@
-// 화면에서 필요한 기능만 이곳을 통해 안전하게 공개할 예정이야.
-export {}
+import { contextBridge, ipcRenderer } from 'electron'
+import type {
+  SetupInput,
+  SettingsInput,
+  RecordCupInput,
+  CancelWaterInput,
+  GardenSettingsChange,
+  ReminderSettings,
+  DrinkActionInput
+} from '../shared/appState'
+
+// 정원 창에 필요한 클릭 통과와 드래그 기능만 공개한다. 원시 IPC는 노출하지 않는다.
+contextBridge.exposeInMainWorld('gardenWindow', {
+  setMousePassthrough(ignore: boolean): void {
+    if (typeof ignore === 'boolean') ipcRenderer.send('garden:set-mouse-passthrough', ignore)
+  },
+  onMouseCaptureReady: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('garden:mouse-capture-ready', listener)
+    return () => ipcRenderer.removeListener('garden:mouse-capture-ready', listener)
+  },
+  onDragCancelled: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('garden:drag-cancelled', listener)
+    return () => ipcRenderer.removeListener('garden:drag-cancelled', listener)
+  },
+  cancelDrag: () => ipcRenderer.send('garden:drag-cancel'),
+  beginDrag: (point: { x: number; y: number }) => ipcRenderer.send('garden:drag-start', point),
+  moveDrag: (point: { x: number; y: number }) => ipcRenderer.send('garden:drag-move', point),
+  endDrag: (point: { x: number; y: number }): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('garden:drag-end', point)
+})
+
+contextBridge.exposeInMainWorld('hanzanhae', {
+  // 화면이 OS별 안내 문구와 미지원 기능을 표시할 때 쓴다.
+  platform: process.platform,
+  getState: () => ipcRenderer.invoke('app:get-state'),
+  getGardenSettings: () => ipcRenderer.invoke('garden:get-settings'),
+  onGardenSettingsChanged: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('garden:settings-changed', listener)
+    return () => ipcRenderer.removeListener('garden:settings-changed', listener)
+  },
+  updateGardenSettings: (change: GardenSettingsChange) =>
+    ipcRenderer.invoke('garden:update-settings', change),
+  getStatistics: () => ipcRenderer.invoke('app:get-statistics'),
+  setCameraActive(active: boolean): void {
+    if (typeof active === 'boolean') ipcRenderer.send('camera:set-active', active)
+  },
+  getLoginItem: () => ipcRenderer.invoke('app:get-login-item'),
+  setLoginItem: (openAtLogin: boolean) => ipcRenderer.invoke('app:set-login-item', openAtLogin),
+  getReminderSettings: () => ipcRenderer.invoke('reminder:get-settings'),
+  updateReminderSettings: (settings: ReminderSettings) =>
+    ipcRenderer.invoke('reminder:update-settings', settings),
+  testReminder: () => ipcRenderer.invoke('reminder:test'),
+  completeSetup: (input: SetupInput) => ipcRenderer.invoke('app:complete-setup', input),
+  updateSettings: (input: SettingsInput) => ipcRenderer.invoke('app:update-settings', input),
+  recordCup: (input: RecordCupInput) => ipcRenderer.invoke('app:record-cup', input),
+  recordDrinkAction: (input: DrinkActionInput) =>
+    ipcRenderer.invoke('app:record-drink-action', input),
+  cancelWater: (input: CancelWaterInput) => ipcRenderer.invoke('app:cancel-water', input),
+  exportRecords: () => ipcRenderer.invoke('app:export-records'),
+  resetData: () => ipcRenderer.invoke('app:reset-data'),
+  onWaterRecorded: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('app:water-recorded', listener)
+    return () => ipcRenderer.removeListener('app:water-recorded', listener)
+  },
+  onDrinkDetected: (callback: (recordId: number) => void) => {
+    const listener = (_: unknown, recordId: unknown): void => {
+      if (typeof recordId === 'number') callback(recordId)
+    }
+    ipcRenderer.on('app:drink-detected', listener)
+    return () => ipcRenderer.removeListener('app:drink-detected', listener)
+  },
+  onStateChanged: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('app:state-changed', listener)
+    return () => ipcRenderer.removeListener('app:state-changed', listener)
+  }
+})

@@ -1,7 +1,42 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain, net, protocol, session } from 'electron'
 import { join } from 'path'
+import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import {
+  getGardenWindow,
+  initializeGardenWindowIpc,
+  isAppQuitting,
+  showGardenWindow
+} from './windows/gardenWindow'
+import { initializeGardenControls } from './gardenControls'
+import { initializeStorageIpc, setCameraActive, trusted } from './storage/ipc'
+import { initializeReminders } from './reminders/service'
+import { initializeLoginItemIpc } from './loginItem'
+import { initializeUpdates } from './updates'
+import { cameraAssetName, isDashboardUrl } from './camera/security'
+
+let dashboardWindow: BrowserWindow | null = null
+
+// 패키지의 모델과 WASM만 로컬에서 읽는 전용 프로토콜이다.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'hanzanhae-assets',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true }
+  }
+])
+
+function expectedDashboardUrl(): string {
+  return is.dev && process.env['ELECTRON_RENDERER_URL']
+    ? process.env['ELECTRON_RENDERER_URL']
+    : pathToFileURL(join(__dirname, '../renderer/index.html')).toString()
+}
+
+// 두 번째 실행은 같은 SQLite 파일·메뉴 막대·단축키를 겹쳐 쓰지 않도록 바로 종료하고,
+// 이미 실행 중인 앱이 대시보드를 앞으로 가져온다.
+const isPrimaryInstance = app.requestSingleInstanceLock()
+if (!isPrimaryInstance) app.quit()
+app.on('second-instance', () => showDashboard())
 
 function createWindow(): void {
   // 앱 화면을 표시할 창을 생성한다.
@@ -15,6 +50,10 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     title: '한잔해',
+    // macOS 기본 창 버튼은 유지하고, 제목 표시줄을 숨겨 시안의 사이드바와 맞춘다.
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 24, y: 20 } }
+      : {}),
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -22,6 +61,26 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false
     }
+  })
+
+  dashboardWindow = mainWindow
+  // 창을 닫으면 숨기고 메뉴 막대·Dock 아이콘으로 다시 연다. 다시 열 때 화면을 새로 불러오지 않는다.
+  mainWindow.on('close', (event) => {
+    if (isAppQuitting()) return
+    event.preventDefault()
+    // macOS 전체 화면에서 바로 숨기면 빈 검은 화면이 남으므로 전체 화면을 끝낸 뒤 숨긴다.
+    if (!mainWindow.isFullScreen()) return mainWindow.hide()
+    mainWindow.once('leave-full-screen', () => mainWindow.hide())
+    mainWindow.setFullScreen(false)
+  })
+  // 화면을 다시 불러오면 카메라도 꺼지므로 숨긴 창의 백그라운드 제한을 기본값으로 되돌린다.
+  mainWindow.webContents.on('did-start-loading', () => {
+    mainWindow.webContents.setBackgroundThrottling(true)
+    setCameraActive(false)
+  })
+  mainWindow.on('closed', () => {
+    if (dashboardWindow === mainWindow) dashboardWindow = null
+    setCameraActive(false)
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -37,9 +96,28 @@ function createWindow(): void {
   }
 }
 
+function showDashboard(): void {
+  if (!dashboardWindow || dashboardWindow.isDestroyed()) return createWindow()
+  if (dashboardWindow.isMinimized()) dashboardWindow.restore()
+  dashboardWindow.show()
+  dashboardWindow.focus()
+}
+
 // Electron 초기화가 끝나고 창을 생성할 준비가 되면 실행한다.
 // 일부 API는 이 시점 이후에만 사용할 수 있다.
 app.whenReady().then(() => {
+  if (!isPrimaryInstance) return
+
+  protocol.handle('hanzanhae-assets', async (request) => {
+    const name = cameraAssetName(request.url, request.method)
+    if (!name) return new Response('Not found', { status: 404 })
+    const file = join(__dirname, '../renderer/assets', name)
+    const response = await net.fetch(pathToFileURL(file).toString())
+    const headers = new Headers(response.headers)
+    headers.set('Access-Control-Allow-Origin', '*')
+    return new Response(response.body, { status: response.status, headers })
+  })
+
   // Windows에서 앱을 식별할 ID를 설정한다.
   electronApp.setAppUserModelId('com.heozip.hanzanhae')
 
@@ -50,11 +128,56 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  // 앱 창이 다른 문서로 이동하거나 새 창을 열지 못하게 해 preload API가 외부 문서에 노출되지 않게 한다.
+  // 같은 주소 새로고침(개발 중 화면 갱신)만 허용한다.
+  app.on('web-contents-created', (_, contents) => {
+    contents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    contents.on('will-navigate', (event, url) => {
+      if (url !== contents.getURL()) event.preventDefault()
+    })
+  })
+
+  initializeStorageIpc(() => dashboardWindow, getGardenWindow)
+  initializeGardenWindowIpc(() => dashboardWindow)
+  initializeLoginItemIpc(() => dashboardWindow)
+  // 카메라 감지를 켠 동안에만 대시보드가 숨겨져도 분석 타이머를 제한 없이 돌린다.
+  ipcMain.on('camera:set-active', (event, active: unknown) => {
+    if (!trusted(event) || event.sender !== dashboardWindow?.webContents) return
+    if (typeof active !== 'boolean') return
+    event.sender.setBackgroundThrottling(!active)
+    setCameraActive(active)
+  })
+  // 카메라는 대시보드의 메인 프레임만 사용할 수 있다. 마이크·화면 캡처는 허용하지 않는다.
+  session.defaultSession.setPermissionCheckHandler((contents, permission, _origin, details) => {
+    if (permission !== 'media') return false
+    return (
+      contents === dashboardWindow?.webContents &&
+      details.isMainFrame &&
+      isDashboardUrl(details.requestingUrl, expectedDashboardUrl()) &&
+      details.mediaType === 'video'
+    )
+  })
+  session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => {
+    const mediaTypes = 'mediaTypes' in details ? details.mediaTypes : undefined
+    callback(
+      permission === 'media' &&
+        contents === dashboardWindow?.webContents &&
+        details.isMainFrame &&
+        isDashboardUrl(details.requestingUrl, expectedDashboardUrl()) &&
+        Array.isArray(mediaTypes) &&
+        mediaTypes.length === 1 &&
+        mediaTypes[0] === 'video'
+    )
+  })
   createWindow()
+  showGardenWindow()
+  initializeGardenControls(showDashboard, initializeUpdates())
+  initializeReminders(() => dashboardWindow, showDashboard)
 
   app.on('activate', function () {
-    // macOS에서 열린 창이 없을 때 Dock 아이콘을 누르면 창을 다시 연다.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    // 정원 창이 남아 있어도 Dock 아이콘으로 닫힌 대시보드를 다시 연다.
+    showDashboard()
+    showGardenWindow()
   })
 })
 
